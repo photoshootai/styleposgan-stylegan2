@@ -566,11 +566,16 @@ class DiscriminatorBlock(nn.Module):
         ) if downsample else None
 
     def forward(self, x):
+        print("X in D_block is", x.size())
         res = self.conv_res(x)
+        print("X after conv_res is ", x.size())
         x = self.net(x)
+        print("X after net application is", x.size())
         if exists(self.downsample):
             x = self.downsample(x)
+            print("X after downsamping is ", x.size())
         x = (x + res) * (1 / math.sqrt(2))
+        print("X after last + res and 1/sqrt is", x.size())
         return x
 
 class Generator(nn.Module):
@@ -687,8 +692,7 @@ class Discriminator(nn.Module):
         self.quantize_blocks = nn.ModuleList(quantize_blocks)
 
         chan_last = filters[-1]
-        #Should this be just chan_last
-        latent_dim = chan_last #2 * 2 * chan_last
+        latent_dim = chan_last #2 * 2 * chan_last; Changed this because output into logits is always 512
 
         self.final_conv = nn.Conv2d(chan_last, chan_last, 3, padding=1)
         self.flatten = Flatten()
@@ -696,7 +700,8 @@ class Discriminator(nn.Module):
 
     def forward(self, x):
         b, *_ = x.shape
-
+        print("Discriminator forward pass")
+        print("X shape is", x.size())
         quantize_loss = torch.zeros(1).to(x)
 
         for (block, attn_block, q_block) in zip(self.blocks, self.attn_blocks, self.quantize_blocks):
@@ -709,11 +714,14 @@ class Discriminator(nn.Module):
                 x, loss = q_block(x)
                 quantize_loss += loss
 
+        print("X before final conv is ", self.final_conv)
         x = self.final_conv(x)
         x = self.flatten(x)
         print("X's dims in D after Flatten are" + str(x.size()))
         print("to_logit is " + str(self.to_logit))
         x = self.to_logit(x)
+
+        print("X final output before squeezing is", x)
         return x.squeeze(), quantize_loss
 
 class StyleGAN2(nn.Module):
