@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
+from torch.optim import Adam
 from contextlib import contextmanager, ExitStack
 from stylegan2 import Generator, Discriminator, EMA, StyleVectorizer, AugWrapper
-
+from stylegan2 import set_requires_grad
 
 class GNet(nn.Module):
     def __init__(self, image_size, latent_dim=512, fmap_max=512, style_depth=8, network_capacity=16, transparent=False, fp16=False, cl_reg=False, steps=1, lr=1e-4, ttur_mult=2, fq_layers=[], fq_dict_size=256, attn_layers=[], lr_mlp=0.1, rank=0):
@@ -38,8 +39,7 @@ class GNet(nn.Module):
         set_requires_grad(self.GE, False)
 
         # init optimizers
-        generator_params = list(self.G.parameters()) + \
-            list(self.S.parameters())
+        generator_params = list(self.G.parameters()) + list(self.S.parameters())
         self.G_opt = Adam(generator_params, lr=self.lr, betas=(0.5, 0.9))
         self.D_opt = Adam(self.D.parameters(), lr=self.lr *
                           ttur_mult, betas=(0.5, 0.9))
