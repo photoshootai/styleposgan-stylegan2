@@ -626,8 +626,8 @@ class Generator(nn.Module):
             self.blocks.append(block)
 
     #Added s_input as an additional argument to forward
-    def forward(self, styles, input_noise, s_input):
-        batch_size = styles.shape[0]
+    def forward(self, z_inputs, input_noise, s_input):
+        batch_size = z_inputs.shape[0]
         image_size = self.image_size
 
         print("Starting forward pass: ")
@@ -635,24 +635,24 @@ class Generator(nn.Module):
         print("Image size is " + str(image_size))
 
         # if self.s_input is None:
-        #     avg_style = styles.mean(dim=1)[:, :, None, None]
+        #     avg_style = z_inputs.mean(dim=1)[:, :, None, None]
         #     x = self.to_initial_block(avg_style)
         # else:
         x = s_input
         print("s_input is: " + str(s_input.size()))
         rgb = None
-        styles = styles.transpose(0, 1)
+        z_inputs = z_inputs.transpose(0, 1)
 
         print("Initial Conv Dims is: " + str(self.initial_conv))
         x = self.initial_conv(x)
         print("X dim after convolution is: " + str(x.size()))
 
-        for style, block, attn in zip(styles, self.blocks, self.attns):
+        for z_input, block, attn in zip(z_inputs, self.blocks, self.attns):
             if exists(attn): 
                 print("X dim before attention" + str(x.size()))
                 x = attn(x)
                 print("X dim after attention" + str(x.size()))
-            x, rgb = block(x, rgb, style, input_noise)
+            x, rgb = block(x, rgb, z_input, input_noise)
 
         return rgb
 

@@ -58,8 +58,9 @@ class StylePoseGAN(pl.LightningModule):
         T_z = self.ANet(T_texture_map)
 
 
-        I_s = G(E_s, z_s)            
-        generated = G(E_t, z_s)
+        input_noise = None #TODO: make it same as in the lucid rains repo
+        I_s = self.g_net.G(z_s, input_noise, E_s) #G(E_s, z_s)            
+        generated = self.g_net.G(z_s, input_noise, E_t)
 
         loss = get_total_loss(I_t, generated)
         
