@@ -36,4 +36,4 @@ class VGG16(torch.nn.Module):
         h_relu3_3 = h
         h = self.slice4(h)
         h_relu4_3 = h
-        return torch.tensor(h_relu1_2, h_relu2_2, h_relu3_3, h_relu4_3)
+        return (h_relu1_2, h_relu2_2, h_relu3_3, h_relu4_3)

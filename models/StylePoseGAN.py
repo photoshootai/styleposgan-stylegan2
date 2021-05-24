@@ -18,8 +18,9 @@ from models import ANet, PNet, GNet
 # #import noise-related helper functions
 # from stylegan2 import noise, noise_list, 
 from stylegan2 import *
-#Import losses
 
+#Import losses
+from losses import get_total_loss
 
 class StylePoseGAN(pl.LightningModule):
 
@@ -33,6 +34,8 @@ class StylePoseGAN(pl.LightningModule):
         
         self.g_lr = 1e-3
         self.d_lr = 1e-2
+
+        self.main_lr = 2e-3 #TODO: Check this
         self.ttur_mult = 2
 
         #Disabling Pytorch lightning's default optimizer
@@ -47,9 +50,9 @@ class StylePoseGAN(pl.LightningModule):
         return gen_I #Forward pass returns the generated image
     
 
-    # training_step defined the train loop.
-    # It is independent of forward
+    # training_step defined the train loop. # It is independent of forward
     def training_step(self, batch, batch_idx):
+        
         #Get optimizers
         D_opt, G_opt = self.optimizers()
 
@@ -66,107 +69,25 @@ class StylePoseGAN(pl.LightningModule):
 
 
         input_noise = None #TODO: make it same as in the lucid rains repo
-        I_s = self.g_net.G(z_s, input_noise, E_s) #G(E_s, z_s)            
-        generated = self.g_net.G(z_s, input_noise, E_t)
+        I_dash_s = self.g_net.G(z_s, input_noise, E_s) #G(E_s, z_s)            
+        I_dash_s_to_t = self.g_net.G(z_s, input_noise, E_t)
 
-        loss = get_total_loss(I_t, generated)
-        
-        
-
-
-        
-
+                
+        #Backward pass on different losses
         #Training Discriminator
 
         D_opt.zero_grad()
 
-        fake_output, fake_q_loss = self.g_net.D_aug(generated.clone().detach(), detach = True)
-        real_output, real_q_loss = D_aug(image_batch, **aug_kwargs)
 
-        real_output_loss = real_output
-        fake_output_loss = fake_output
+        #Opt step for g_opt and d_opt
 
-        if self.rel_disc_loss:
-            real_output_loss = real_output_loss - fake_output.mean()
-            fake_output_loss = fake_output_loss - real_output.mean()
 
-        #What loss function to use here?
-        divergence = D_loss_fn(real_output_loss, fake_output_loss)
-        disc_loss = divergence
+        # Calculate Moving Averages
 
-        if self.has_fq:
-            quantize_loss = (fake_q_loss + real_q_loss).mean()
-            self.q_loss = float(quantize_loss.detach().item())
-
-            disc_loss = disc_loss + quantize_loss
-
-        #TODO: Check everything below?
-        if apply_gradient_penalty:
-            gp = gradient_penalty(image_batch, real_output)
-            self.last_gp_loss = gp.clone().detach().item()
-            self.track(self.last_gp_loss, 'GP')
-            disc_loss = disc_loss + gp
-
-            disc_loss = disc_loss / self.gradient_accumulate_every
-            disc_loss.register_hook(raise_if_nan)
-            backwards(disc_loss, self.GAN.D_opt, loss_id = 1)
-
-            total_disc_loss += divergence.detach().item() / self.gradient_accumulate_every
-
-        self.d_loss = float(total_disc_loss)
-
-        self.track(self.d_loss, 'D')
         
-        self.manual_backward(-1*self.d_loss)#TODO
-        self.GAN.D_opt.step()        
 
-        #Training the Generato
-        G_opt.zero_grad()
-
-        fake_output, _ = D_aug(generated_images, **aug_kwargs)
-        fake_output_loss = fake_output
-
-        real_output = None
-        if G_requires_reals:
-            image_batch = next(self.loader).cuda(self.rank)
-            real_output, _ = D_aug(image_batch, detach = True, **aug_kwargs)
-            real_output = real_output.detach()
-
-        if self.top_k_training:
-            epochs = (self.steps * batch_size * self.gradient_accumulate_every) / len(self.dataset)
-            k_frac = max(self.generator_top_k_gamma ** epochs, self.generator_top_k_frac)
-            k = math.ceil(batch_size * k_frac)
-
-            if k != batch_size:
-                fake_output_loss, _ = fake_output_loss.topk(k=k, largest=False)
-
-        loss = G_loss_fn(fake_output_loss, real_output)
-        gen_loss = loss
-
-        if apply_path_penalty:
-            pl_lengths = calc_pl_lengths(w_styles, generated_images)
-            avg_pl_length = np.mean(pl_lengths.detach().cpu().numpy())
-
-            if not is_empty(self.pl_mean):
-                pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
-                if not torch.isnan(pl_loss):
-                    gen_loss = gen_loss + pl_loss
-
-        gen_loss = gen_loss / self.gradient_accumulate_every
-        gen_loss.register_hook(raise_if_nan)
-        backwards(gen_loss, self.GAN.G_opt, loss_id = 2)
-
-        total_gen_loss += loss.detach().item() / self.gradient_accumulate_every
-
-        self.g_loss = float(total_gen_loss)
-        self.track(self.g_loss, 'G')
-
-        self.GAN.G_opt.step()       
-
-
-
-        loss.backward()
-        optimizer.step()
+       
+        
         
         self.log_dict({'g_loss': errG, 'd_loss': errD}, prog_bar=True)
         return  [self.d_loss, self.g_loss]
@@ -185,11 +106,11 @@ class StylePoseGAN(pl.LightningModule):
     def configure_optimizers(self):
         
         # init optimizers
-        generator_params = list(self.g_net.G.parameters()) + list(self.g_net.S.parameters())
-        G_opt = Adam(generator_params, lr=self.g_lr, betas=(0.5, 0.9))
+        G_opt = Adam(self.g_net.G.parameters(), lr=self.g_lr, betas=(0.5, 0.9))
         D_opt = Adam(self.g_net.D.parameters(), lr=self.d_lr * self.ttur_mult, betas=(0.5, 0.9))
 
-
+        all_params = list(self.a_net.parameters() + list(self.p_net.parameters()) + list(self.g_net.parameters()))
+        Main_opt = Adam(all_params,
         #Can also do learning rate scheduling:
         #optimizers = [G_opt, D_opt]
         #lr_schedulers = {'scheduler': ReduceLROnPlateau(G_opt, ...), 'monitor': 'metric_to_track'}
