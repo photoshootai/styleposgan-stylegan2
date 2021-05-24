@@ -27,8 +27,16 @@ class StylePoseGAN(pl.LightningModule):
         super().__init__()
         self.a_net = ANet()
         self.p_net = PNet()
-        self.g_net = GNet() #Contains g_net.G, g_net.D, g_net.D_aug
-    
+        self.g_net = GNet() #Contains g_net.G, g_net.D, g_net.D_aug, g_net.S
+
+
+        
+        self.g_lr = 1e-3
+        self.d_lr = 1e-2
+        self.ttur_mult = 2
+
+        #Disabling Pytorch lightning's default optimizer
+        self.automatic_optimization = False
 
     def forward(self, pose_map, texture_map):
         # in lightning, forward defines the prediction/inference actions
@@ -38,17 +46,16 @@ class StylePoseGAN(pl.LightningModule):
         gen_I = self.g_net.G(E, z)
         return gen_I #Forward pass returns the generated image
     
+
+    # training_step defined the train loop.
+    # It is independent of forward
     def training_step(self, batch, batch_idx):
-        # training_step defined the train loop.
-        # It is independent of forward
+        #Get optimizers
+        D_opt, G_opt = self.optimizers()
+
         
         (S_pose_map, S_texture_map, source_I), (T_pose_map, T_texture_map, target_I) = batch #x, y = batch, so x is  the tuple, and y is the triplet
-        # x = x.view(x.size(0), -1) 
-        # z = self.encoder(x)
-        # x_hat = self.decoder(z)
-        # loss = F.mse_loss(x_hat, x)
-        
-        
+
         #PNet
         S_E = self.PNet(S_pose_map)
         T_E = self.PNet(T_pose_map)
@@ -65,12 +72,15 @@ class StylePoseGAN(pl.LightningModule):
         loss = get_total_loss(I_t, generated)
         
         
-        #Training Discriminator
-        
-        #avg_pl = pl_mean
-        self.GAN.D_opt.zero_grad()
 
-        fake_output, fake_q_loss = self.g_net.D_aug(generated_images.clone().detach(), detach = True, **aug_kwargs)
+
+        
+
+        #Training Discriminator
+
+        D_opt.zero_grad()
+
+        fake_output, fake_q_loss = self.g_net.D_aug(generated.clone().detach(), detach = True)
         real_output, real_q_loss = D_aug(image_batch, **aug_kwargs)
 
         real_output_loss = real_output
@@ -104,12 +114,14 @@ class StylePoseGAN(pl.LightningModule):
             total_disc_loss += divergence.detach().item() / self.gradient_accumulate_every
 
         self.d_loss = float(total_disc_loss)
-        self.track(self.d_loss, 'D')
 
+        self.track(self.d_loss, 'D')
+        
+        self.manual_backward(-1*self.d_loss)#TODO
         self.GAN.D_opt.step()        
 
         #Training the Generato
-        self.GAN.G_opt.zero_grad()
+        G_opt.zero_grad()
 
         fake_output, _ = D_aug(generated_images, **aug_kwargs)
         fake_output_loss = fake_output
@@ -156,22 +168,31 @@ class StylePoseGAN(pl.LightningModule):
         loss.backward()
         optimizer.step()
         
-        # Logging to TensorBoard by default
-        self.log('train_loss', loss)
-        return loss
+        self.log_dict({'g_loss': errG, 'd_loss': errD}, prog_bar=True)
+        return  [self.d_loss, self.g_loss]
 
     #You can customize any part of training (such as the backward pass) by overriding any of the 20+ hooks found in Available Callback hooks
     # def backward(self, loss, optimizer, optimizer_idx):
     #     loss.backward()
+    def training_step_end(self, losses):
+        return s
+
 
     #TODO check this
     def validation_step(self):
         return super().validation_step()
 
     def configure_optimizers(self):
-        #TODO
-        pass
-        # optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
-        # return optimizer
+        
+        # init optimizers
+        generator_params = list(self.g_net.G.parameters()) + list(self.g_net.S.parameters())
+        G_opt = Adam(generator_params, lr=self.g_lr, betas=(0.5, 0.9))
+        D_opt = Adam(self.g_net.D.parameters(), lr=self.d_lr * self.ttur_mult, betas=(0.5, 0.9))
 
-        #Need to enable custom optimizer to get custom loss???
+
+        #Can also do learning rate scheduling:
+        #optimizers = [G_opt, D_opt]
+        #lr_schedulers = {'scheduler': ReduceLROnPlateau(G_opt, ...), 'monitor': 'metric_to_track'}
+        #return optimizers, lr_schedulers
+
+        return G_opt, D_opt

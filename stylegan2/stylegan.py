@@ -503,7 +503,7 @@ class GeneratorBlock(nn.Module):
         super().__init__()
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False) if upsample else None
 
-        self.to_style1 = nn.Linear(latent_dim, input_channels)
+        self.to_style1 =  nn.Linear(latent_dim, input_channels) #TODO? change to 2048 input_channels
         self.to_noise1 = nn.Linear(1, filters)
         self.conv1 = Conv2DMod(input_channels, filters, 3)
         
@@ -566,6 +566,7 @@ class DiscriminatorBlock(nn.Module):
         ) if downsample else None
 
     def forward(self, x):
+        print("Disc block")
         print("X in D_block is", x.size())
         res = self.conv_res(x)
         print("X after conv_res is ", x.size())
@@ -623,6 +624,7 @@ class Generator(nn.Module):
                 upsample_rgb = not_last,
                 rgba = transparent
             )
+            
             self.blocks.append(block)
 
     #Added s_input as an additional argument to forward
@@ -641,7 +643,7 @@ class Generator(nn.Module):
         x = s_input
         print("s_input is: " + str(s_input.size()))
         rgb = None
-        z_inputs = z_inputs.transpose(0, 1)
+        z_inputs = z_inputs.transpose(0, 1)#Change (x, y, z) to (y, x, z)
 
         print("Initial Conv Dims is: " + str(self.initial_conv))
         x = self.initial_conv(x)

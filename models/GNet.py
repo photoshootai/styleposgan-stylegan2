@@ -32,17 +32,18 @@ class GNet(nn.Module):
                 self.D, image_size, hidden_layer='flatten')
 
         # wrapper for augmenting all images going into the discriminator
+        #TODO: Check if this is what is happening in StyleGAN2-ADA
         self.D_aug = AugWrapper(self.D, image_size)
 
         # turn off grad for exponential moving averages
         set_requires_grad(self.SE, False)
         set_requires_grad(self.GE, False)
 
-        # init optimizers
-        generator_params = list(self.G.parameters()) + list(self.S.parameters())
-        self.G_opt = Adam(generator_params, lr=self.lr, betas=(0.5, 0.9))
-        self.D_opt = Adam(self.D.parameters(), lr=self.lr *
-                          ttur_mult, betas=(0.5, 0.9))
+        # # init optimizers
+        # generator_params = list(self.G.parameters()) + list(self.S.parameters())
+        # self.G_opt = Adam(generator_params, lr=self.lr, betas=(0.5, 0.9))
+        # self.D_opt = Adam(self.D.parameters(), lr=self.lr *
+        #                   ttur_mult, betas=(0.5, 0.9))
 
         # init weights
         self._init_weights()
@@ -50,11 +51,12 @@ class GNet(nn.Module):
 
         self.cuda(rank)
 
-        # startup apex mixed precision
-        self.fp16 = fp16
-        if fp16:
-            (self.S, self.G, self.D, self.SE, self.GE), (self.G_opt, self.D_opt) = amp.initialize(
-                [self.S, self.G, self.D, self.SE, self.GE], [self.G_opt, self.D_opt], opt_level='O1', num_losses=3)
+        #Pytorch Lightning should implement this automatically
+        # # startup apex mixed precision
+        # self.fp16 = fp16
+        # if fp16:
+        #     (self.S, self.G, self.D, self.SE, self.GE), (self.G_opt, self.D_opt) = amp.initialize(
+        #         [self.S, self.G, self.D, self.SE, self.GE], [self.G_opt, self.D_opt], opt_level='O1', num_losses=3)
 
     def _init_weights(self):
         for m in self.modules():

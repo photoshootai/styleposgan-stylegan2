@@ -1,3 +1,4 @@
+from models.StylePoseGAN import StylePoseGAN
 import sys
 
 from numpy.core.numeric import True_
@@ -20,68 +21,16 @@ from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
 
 
-def train(dataset, batch_size, device, epochs):
-    dataloader = Dataloader(dataset, batch_size=batch_size)
-    trainloader = None
-    valloader = None
+def train(dataset, batch_size, gpus, epochs):
 
-    # Distributed trainig
-    # if torch.cuda.is_available():
-    #     device = "cuda:0"
-    #     if torch.cuda.device_count() > 1:
-    #         net = nn.DataParallel(net)
-    # net.to(device)
-    G = None
+    model = StylePoseGAN()
+    train_loader = Dataloader(dataset, batch_size=batch_size)
 
-    for epoch in range(10):  # loop over the dataset multiple times
-        running_loss = 0.0
-        epoch_steps = 0
-        for i, data in enumerate(trainloader, 0):
-            # get the inputs; data is a list of [inputs, labels]
-            inputs, labels = data
-            inputs, labels = inputs.to(device), labels.to(device)
+    trainer = pl.Trainer(tpu_cores=8, precision=16)
+    trainer.fit(model, train_loader)
 
-            # zero the parameter gradients
-            optimizer.zero_grad()
 
-            # forward + backward + optimize
-            outputs = net(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-
-            # print statistics
-            running_loss += loss.item()
-            epoch_steps += 1
-            if i % 2000 == 1999:  # print every 2000 mini-batches
-                print("[%d, %5d] loss: %.3f" % (epoch + 1, i + 1,
-                                                running_loss / epoch_steps))
-                running_loss = 0.0
-
-        # Validation loss
-        val_loss = 0.0
-        val_steps = 0
-        total = 0
-        correct = 0
-        for i, data in enumerate(valloader, 0):
-            with torch.no_grad():
-                inputs, labels = data
-                inputs, labels = inputs.to(device), labels.to(device)
-
-                outputs = net(inputs)
-                _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
-
-                loss = criterion(outputs, labels)
-                val_loss += loss.cpu().numpy()
-                val_steps += 1
-
-        with tune.checkpoint_dir(epoch) as checkpoint_dir:
-            path = os.path.join(checkpoint_dir, "checkpoint")
-            torch.save((net.state_dict(), optimizer.state_dict()), path)
-
-        tune.report(loss=(val_loss / val_steps), accuracy=correct / total)
+    
 
     print("Finished Training")
 

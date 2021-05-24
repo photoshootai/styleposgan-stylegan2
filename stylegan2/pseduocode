@@ -1,0 +1,25 @@
+def train():
+    for i in range(epoch):
+        for I_s, I_t, (S_pose_map, S_texture_map), (T_pose_map, T_texture_map)in train_data: #batched
+            
+            #Train PNet
+            S_E = PNet(S_pose_map)
+            T_E = PNet(T_pose_map)
+
+            #Train ANet
+            S_z = ANet(S_texture_map)
+            T_z = ANet(T_texture_map)
+
+
+            I_s = G(E_s, z_s)            
+            generated = G(E_t, z_s)
+
+            loss = get_total_loss(I_t, generated)
+            #Training Discriminator
+
+            #Training the Generator
+
+
+
+            loss.backward()
+            optimizer.step()
