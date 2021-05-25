@@ -30,7 +30,7 @@ class StylePoseGAN(pl.LightningModule):
         self.p_net = PNet()
         self.g_net = GNet() #Contains g_net.G, g_net.D, g_net.D_aug, g_net.S
 
-
+        self.d_patch = None #Implement D_Patch
         
         self.g_lr = 1e-3
         self.d_lr = 1e-2
@@ -109,11 +109,14 @@ class StylePoseGAN(pl.LightningModule):
         G_opt = Adam(self.g_net.G.parameters(), lr=self.g_lr, betas=(0.5, 0.9))
         D_opt = Adam(self.g_net.D.parameters(), lr=self.d_lr * self.ttur_mult, betas=(0.5, 0.9))
 
-        all_params = list(self.a_net.parameters() + list(self.p_net.parameters()) + list(self.g_net.parameters()))
-        Main_opt = Adam(all_params,
+        param_to_min = list(self.a_net.parameters() + list(self.p_net.parameters()) + list(self.g_net.parameters()))
+        param_to_max = list(self.g_net.D.parameters() + self.d_patch.parameters())
+        min_opt = Adam(param_to_min, lr=self.main_lr, betas=(0.5, 0.9))
+        max_opt = Adam(param_to_max, lr=self.main_lr, betas=(0.5, 0.9))
+        
         #Can also do learning rate scheduling:
         #optimizers = [G_opt, D_opt]
         #lr_schedulers = {'scheduler': ReduceLROnPlateau(G_opt, ...), 'monitor': 'metric_to_track'}
         #return optimizers, lr_schedulers
 
-        return G_opt, D_opt
+        return min_opt, max_opt

@@ -1,4 +1,4 @@
-from torch.nn.functional import embedding
+import torch
 from losses.VGGPerceptual import VGG16
 import torch.nn as nn
 from torchvision import models
@@ -8,6 +8,10 @@ from stylegan2 import hinge_loss, gen_hinge_loss
 #Facenet
 #TODO: evaluate other options along 2 dimensions of trade off, prediction quality and inference time
 from facenet_pytorch import MTCNN, InceptionResnetV1
+
+def get_total_loss(generated, real, G, D, D_aug, loss_weights, args):
+    total_loss = get_reconstruction_loss() + get_reconstruction_loss() + 
+    return 
 
 #Helper function to get reconstruction_loss multiple times as used in total_loss
 def get_reconstruction_loss(generated, real, G, D, D_aug, loss_weights, args): 
@@ -41,44 +45,54 @@ def face_id_loss():
     resnet = InceptionResnetV1(pretrained='vggface2').eval()
     img_cropped = mtcnn()
     embedding = resnet()
-#
-def gan_d_loss(generated, real, G, D, D_aug, args):
+
+
+def get_gan_loss(generated, real, G, D, D_aug, args):
+    d_x = D_aug(real)
+    d_g_z = D_aug(generated)
+
+    return torch.log(d_x) + torch.log(d_g_z)
+
+"""
+Don't know if we need these two below, but this basically define G and D's losses using BCE seperately, following the usual Pytorch tutorial
+"""
+def gan_d_loss(generated, real, G, D, D_aug, args={'device': 'cuda'}):
 
     #Training Discriminator
     G_requires_reals = False
-    D_loss_fn = hinge_loss
-    G_loss_fn = gen_hinge_loss
+    criterion = torch.nn.BCELoss()
 
     fake_output, fake_q_loss = D_aug(generated.clone().detach(), detach = True)
     real_output, real_q_loss = D_aug(real)
 
-    real_output_loss = real_output
-    fake_output_loss = fake_output
+    batch_size = generated.shape[0]
+
+    real_label = torch.ones((batch_size, 1), device=args['device'])
+    fake_label = torch.zeros((batch_size, 1), device=args['device'])
+
+    disc_loss_real = criterion(real_output, real_label)
+    disc_loss_fake = criterion(fake_output, fake_label)
+
+    total_disc_loss = disc_loss_real + disc_loss_fake
     
-    disc_loss = D_loss_fn(real_output_loss, fake_output_loss)
-
-    #real = 1, fake =1 then 1
-    #real = 1, fake =0 then 1.5 
-    #real = 0, fake =1 then 0.5
-    #real = 0, fake = 0 then 1
-
     if args["epoch_id"] % 4== 0:
         gp = gradient_penalty(image_batch, real_output)
         last_gp_loss = gp.clone().detach().item()
         #track(last_gp_loss, 'GP')
-        disc_loss = disc_loss + gp
+        disc_loss = disc_loss + gd
 
-    disc_loss= disc_loss.item()
-
-    return disc_loss
+    return total_disc_loss
 
 
 def gan_g_loss(generated, real, G, D, D_aug, args):
+    criterion = nn.BCELoss()
     fake_output, _ = D_aug(generated)
-    fake_output_loss = fake_output
-    
-    G_loss_fn = gen_hinge_loss
 
+  
+    batch_size = generated.shape[0]
+    real_label = torch.ones((batch_size, 1), device=self.device)
+    g_loss = criterion(fake_output, real_label)
+    
     #Experimental features for contrastive loss and top-k training
 
     # G_requires_reals = False
@@ -96,8 +110,7 @@ def gan_g_loss(generated, real, G, D, D_aug, args):
     #     if k != batch_size:
     #         fake_output_loss, _ = fake_output_loss.topk(k=k, largest=False)
     
-    loss = G_loss_fn(fake_output_loss, real_output)
-    gen_loss = loss
+
 
     # Path penalty feature
 
@@ -109,8 +122,16 @@ def gan_g_loss(generated, real, G, D, D_aug, args):
     #     pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
     #     if not torch.isnan(pl_loss):
     #         gen_loss = gen_loss + pl_loss
-    g_loss = float(gen_loss.detach.item())
+
     return g_loss
 
 def patch_loss():
+    pass
+
+
+def _disc_loss_function(real, fake):
+    pass
+
+
+def _gen_loss_function(real, fake):
     pass
