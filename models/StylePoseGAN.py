@@ -21,7 +21,7 @@ from models import ANet, PNet, GNet
 from stylegan2 import *
 
 #Import losses
-from losses import get_total_loss
+from losses import gan_g_loss
 
 class StylePoseGAN(pl.LightningModule):
 
@@ -53,7 +53,7 @@ class StylePoseGAN(pl.LightningModule):
 
     # training_step defined the train loop. # It is independent of forward
     def training_step(self, batch, batch_idx):
-        
+        apply_path_penalty=False
 
         #Weights
         weight_l1 =1
@@ -98,16 +98,14 @@ class StylePoseGAN(pl.LightningModule):
         
         gan_loss_1_d = gan_d_loss(I_dash_s.clone().detach(), I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
         gan_loss_2_d = gan_d_loss(I_dash_s_to_t.clone().detach(), I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
-        
+
+        #!IMPORTANT:  minimizing a -> flip grads = maximizing a
+        # total_loss += (-1) * gan_d_loss()       
         total_loss = rec_loss_1 + rec_loss_2 + \
                      gan_loss_1_g + gan_loss_2_g + \
                      -gan_loss_1_d + -gan_loss_2_d
-
+                    
         total_loss.backward() #Minimizing everything
-        
-        #Backward pass on different losses
-        #!IMPORTANT:  minimizing a -> flip grads = maximizing a
-        # total_loss += (-1) * gan_d_loss()
 
         # Now flip the sign to perform gradient ascent for D and DPatch, and potentially G
         for p in self.g_net.D.parameters():
@@ -121,27 +119,35 @@ class StylePoseGAN(pl.LightningModule):
         min_opt.step() #This will minimize all gradients for only ANet, PNet and G
         max_opt.step() #This will maximize all gradients for D and D_patch b/c they are not flipped
 
-        
-
-
-        #Opt step for g_opt and d_opt
-
+    
 
         # Calculate Moving Averages
+        if apply_path_penalty and not np.isnan(avg_pl_length):
+                    self.pl_mean = self.pl_length_ma.update_average(self.pl_mean, avg_pl_length)
+                    self.track(self.pl_mean, 'PL')
 
-        
+        if self.is_main and self.steps % 10 == 0 and self.steps > 20000:
+            self.GAN.EMA()
 
-       
+        if self.is_main and self.steps <= 25000 and self.steps % 1000 == 2:
+            self.GAN.reset_parameter_averaging()
+
+        # save from NaN errors
+
+        if any(torch.isnan(total_loss) ):
+            print(f'NaN detected for generator or discriminator. Loading from checkpoint #{self.checkpoint_num}')
+            self.load(self.checkpoint_num)
+            raise NanException
         
         
-        self.log_dict({'g_loss': errG, 'd_loss': errD}, prog_bar=True)
+        self.log_dict({'generation_loss': total_loss, 'disc_loss': errD}, prog_bar=True)
         return  [self.d_loss, self.g_loss]
 
     #You can customize any part of training (such as the backward pass) by overriding any of the 20+ hooks found in Available Callback hooks
     # def backward(self, loss, optimizer, optimizer_idx):
     #     loss.backward()
     def training_step_end(self, losses):
-        return s
+        return
 
 
     #TODO check this
