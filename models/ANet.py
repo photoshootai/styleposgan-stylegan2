@@ -6,15 +6,15 @@ def get_anet_final_block(in_chan=512, out_chan=2048, hidden_chan=1024, kernel_si
     return nn.Sequential(
         #the normalization was recommended by kshitij. It wasn't explicitly prescribed in the text
         nn.Conv2d(in_chan, hidden_chan, kernel_size, stride, padding),
-        #nn.ReLU(inplace=True),
+        nn.ReLU(inplace=True),
         nn.Conv2d(hidden_chan,hidden_chan,kernel_size,stride,padding),
-        #nn.ReLU(inplace=True),
+        nn.ReLU(inplace=True),
         nn.Conv2d(hidden_chan,hidden_chan,kernel_size,stride,padding),
-        #nn.ReLU(inplace=True),
+        nn.ReLU(inplace=True),
         nn.Conv2d(hidden_chan,hidden_chan,kernel_size,stride,padding),
-        #nn.ReLU(inplace=True),
+        nn.ReLU(inplace=True),
         nn.Conv2d(hidden_chan,hidden_chan,kernel_size,stride,padding),
-        #nn.ReLU(inplace=True)
+        nn.ReLU(inplace=True)
     )
 
 class ANet(nn.Module):

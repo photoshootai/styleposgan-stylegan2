@@ -149,19 +149,74 @@ class StylePoseGAN(pl.LightningModule):
         
         
         self.log_dict({'generation_loss': l_total_to_min, 'disc_loss': l_total_to_max}, prog_bar=True)
-        return  [l_total_to_min, l_total_to_max]
+        return  {'l_total_to_min': l_total_to_min, 'l_total_to_max': l_total_to_max}
 
 
     #You can customize any part of training (such as the backward pass) by overriding any of the 20+ hooks found in Available Callback hooks
     # def backward(self, loss, optimizer, optimizer_idx):
     #     loss.backward()
-    def training_step_end(self, losses):
-        return
+    # def training_step_end(self, losses):
+    #     return
 
 
     #TODO check this
-    def validation_step(self):
-        return super().validation_step()
+    def validation_step(self, batch, batch_idx):
+        (S_pose_map, S_texture_map, I_s), (T_pose_map, T_texture_map, I_t) = batch #x, y = batch, so x is  the tuple, and y is the triplet 
+
+        #PNet
+        E_s = self.PNet(S_pose_map)
+        E_t = self.PNet(T_pose_map)
+
+        #ANet
+        z_s = self.ANet(S_texture_map)
+        z_t = self.ANet(T_texture_map)
+
+
+        input_noise = None #TODO: make it same as in the lucid rains repo
+        I_dash_s = self.g_net.G(z_s, input_noise, E_s) #G(E_s, z_s)            
+        I_dash_s_to_t = self.g_net.G(z_s, input_noise, E_t)
+
+
+        #Need to detach at the top level 
+        rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) + \
+                      weight_vgg * get_perceptual_vgg_loss(I_dash_s, I_s) + \
+                      weight_face * get_face_id_loss(I_dash_s, I_s)
+                                
+        rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) + \
+                      weight_vgg * get_perceptual_vgg_loss(I_dash_s_to_t, I_t) + \
+                      weight_face * get_face_id_loss(I_dash_s_to_t, I_t) 
+
+        gan_loss_1_g = gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
+        gan_loss_2_g = gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
+
+        gan_loss_1_d = gan_d_loss(I_dash_s.clone().detach(), I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
+        gan_loss_2_d = gan_d_loss(I_dash_s_to_t.clone().detach(), I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
+
+        """
+        L_GAN has two parts: 
+        1. the D_loss=log(D(x)) + log(1-D(G(z))) which needs to maximized
+        2. the G_loss=log(D(G(z))) obtained from the -log(D) trick, which also needs to be maximized
+
+        The make two cases of the Loss_total:
+        One contains L_GAN = D_loss and that needs to be maximized w.r.t D and DPath
+        One contains L_GAN = G_loss that needs to be maximized w.r.t ANet, PNet and GNet.G
+
+        So basically: 
+        D and DPatch maximize the total loss but with L_GAN as D_loss
+        ANet, PNet, and GNet.G minimize the total loss but with L_GAN as G_loss
+
+        This makes StylePoseGAN conform to the traditional def. of a GAN 
+        with the {ANet, PNet, GNet.G} being the "G" being minimized, 
+        and {D, DPatch} being the "D" being maximized
+        """
+
+        #This is the total loss that needs to be minimized. The only GAN loss here is -log(D(G(z)) times two for the two reconstruction losses
+        l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g 
+        
+       #Total Loss that needs to be maximized. The only GAN loss here is -[log(D(x)) + log(1-D(G(z)))] for the respective args
+        l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d
+        
+        return  {'l_total_to_min': l_total_to_min, 'l_total_to_max': l_total_to_max}
 
     def configure_optimizers(self):
         

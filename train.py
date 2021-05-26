@@ -1,10 +1,10 @@
-from models.StylePoseGAN import StylePoseGAN
-import sys
+from argparse import ArgumentParser
+from itertools import accumulate
 
 from numpy.core.numeric import True_
 import torch
 import torch.nn as nn
-import torch.utils.Dataset
+
 
 import numpy as np
 # from stylegan import Generator, Discriminator, StyleGAN2
@@ -16,9 +16,14 @@ from torchvision import datasets, models, transforms     # vision datasets,
 import torchvision.transforms as transforms              # composable transforms
 from torch.utils.data import DataLoader
 
-#Pytorch Lightning
-import pytorch_lightning as pl
 
+#Pytorch Lightning
+from pytorch_lightning import Trainer, seed_everything
+from pytorch_lightning.loggers import TensorBoardLogger
+#from pytorch_lightning.loggers import WandbLogger
+
+
+from models.StylePoseGAN import StylePoseGAN
 
 # RayTune
 from ray import tune
@@ -26,20 +31,44 @@ from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
 
 
-def train(dataset, batch_size, gpus, epochs):
-
+def main(hparams):
     model = StylePoseGAN()
-    train_loader = DataLoader(dataset, batch_size=batch_size)
+   #train_loader = DataLoader(dataset, batch_size=batch_size)
 
-    trainer = pl.Trainer(tpu_cores=8, precision=16)
-    trainer.fit(model, train_loader)
+
+
+    #Logging
+    logger = TensorBoardLogger('tb_logs', name='my_model')
+
+    #For reporducibility: deterministic = True and 
+    seed_everything(42, workers=True)
+    trainer = Trainer(tpu_cores=hparams.tpu_cores, 
+                    precision=hparams.precision, 
+                    accumulate_grad_batches=hparams.accumulate_grad_batches, 
+                    deterministic=True,
+                    logger=logger, 
+                    profiler="simple")
+
+   #trainer.fit(model, train_loader)
+    trainer.fit(model)
 
 
     print("Finished Training")
 
+    #Test set evaluation
+    #trainer.test(test_dataloaders=test_dataloaders)
+    
+if __name__ == "__main__":
+    # You can change the number of GPUs per trial here:
+    parser = ArgumentParser()
+    parser.add_argument('--gpus', default=None)
+    args = parser.parse_args()
 
-def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
-    train()
+    main(args)
+
+
+# def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
+#     train()
     # data_dir = os.path.abspath("./data")
     # load_data(data_dir)
     # config = {
@@ -89,7 +118,3 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
     # test_acc = test_accuracy(best_trained_model, device)
     print("Best trial test set accuracy: {}".format(test_acc))
 
-
-if __name__ == "__main__":
-    # You can change the number of GPUs per trial here:
-    main(num_samples=10, max_num_epochs=10, gpus_per_trial=0)
