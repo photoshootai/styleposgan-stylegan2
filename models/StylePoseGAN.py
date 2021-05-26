@@ -91,36 +91,44 @@ class StylePoseGAN(pl.LightningModule):
                       weight_vgg * get_perceptual_vgg_loss(I_dash_s_to_t, I_t) + \
                       weight_face * get_face_id_loss(I_dash_s_to_t, I_t) 
 
-
         gan_loss_1_g = gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
         gan_loss_2_g = gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
 
-        
         gan_loss_1_d = gan_d_loss(I_dash_s.clone().detach(), I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
         gan_loss_2_d = gan_d_loss(I_dash_s_to_t.clone().detach(), I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
 
-        #!IMPORTANT:  minimizing a -> flip grads = maximizing a
-        # total_loss += (-1) * gan_d_loss()       
-        total_loss = rec_loss_1 + rec_loss_2 + \
-                     gan_loss_1_g + gan_loss_2_g + \
-                     -gan_loss_1_d + -gan_loss_2_d
-                    
-        total_loss.backward() #Minimizing everything
+        """
+        L_GAN has two parts: 
+        1. the D_loss=log(D(x)) + log(1-D(G(z))) which needs to maximized
+        2. the G_loss=log(D(G(z))) obtained from the -log(D) trick, which also needs to be maximized
 
-        # Now flip the sign to perform gradient ascent for D and DPatch, and potentially G
-        for p in self.g_net.D.parameters():
-            if p.grad is not None:
-               p.grad.data.mul_(-1) 
+        The make two cases of the Loss_total:
+        One contains L_GAN = D_loss and that needs to be maximized w.r.t D and DPath
+        One contains L_GAN = G_loss that needs to be maximized w.r.t ANet, PNet and GNet.G
+
+        So basically: 
+        D and DPatch maximize the total loss but with L_GAN as D_loss
+        ANet, PNet, and GNet.G minimize the total loss but with L_GAN as G_loss
+
+        This makes StylePoseGAN conform to the traditional def. of a GAN 
+        with the {ANet, PNet, GNet.G} being the "G" being minimized, 
+        and {D, DPatch} being the "D" being maximized
+        """
+
+        #This is the total loss that needs to be minimized. The only GAN loss here is -log(D(G(z)) times two for the two reconstruction losses
+        l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g 
         
-        for q in self.d_patch.parameters():
-            if q.grad is not None:
-                q.grad.data.mul_(-1)
-
-        min_opt.step() #This will minimize all gradients for only ANet, PNet and G
-        max_opt.step() #This will maximize all gradients for D and D_patch b/c they are not flipped
-
-    
-
+       #Total Loss that needs to be maximized. The only GAN loss here is -[log(D(x)) + log(1-D(G(z)))] for the respective args
+        l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d
+        
+        min_opt.zero_grad()
+        l_total_to_min.backward()
+        min_opt.step()
+                    
+        max_opt.zero_grad()
+        l_total_to_max.backward()
+        max_opt.step()
+        
         # Calculate Moving Averages
         if apply_path_penalty and not np.isnan(avg_pl_length):
                     self.pl_mean = self.pl_length_ma.update_average(self.pl_mean, avg_pl_length)
@@ -134,14 +142,15 @@ class StylePoseGAN(pl.LightningModule):
 
         # save from NaN errors
 
-        if any(torch.isnan(total_loss) ):
+        if any(torch.isnan(l) for l in (l_total_to_min, l_total_to_max)):
             print(f'NaN detected for generator or discriminator. Loading from checkpoint #{self.checkpoint_num}')
             self.load(self.checkpoint_num)
             raise NanException
         
         
-        self.log_dict({'generation_loss': total_loss, 'disc_loss': errD}, prog_bar=True)
-        return  [self.d_loss, self.g_loss]
+        self.log_dict({'generation_loss': l_total_to_min, 'disc_loss': l_total_to_max}, prog_bar=True)
+        return  [l_total_to_min, l_total_to_max]
+
 
     #You can customize any part of training (such as the backward pass) by overriding any of the 20+ hooks found in Available Callback hooks
     # def backward(self, loss, optimizer, optimizer_idx):
