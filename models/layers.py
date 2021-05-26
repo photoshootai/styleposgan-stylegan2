@@ -1,3 +1,5 @@
+import torch.nn as nn
+
 class ResidualBlock(nn.Module):
     #this class defines a set of functions that comprise the residual block as specified by StylePoseGAN
     #notes:
