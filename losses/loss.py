@@ -3,6 +3,7 @@ from losses.VGGPerceptual import VGG16
 import torch.nn as nn
 from torchvision import models
 from stylegan2 import hinge_loss, gen_hinge_loss
+import numpy as np
 
 #Facenet
 #TODO: evaluate other options along 2 dimensions of trade off, prediction quality and inference time
@@ -48,12 +49,30 @@ def calcaluate_l_vgg(gen_tuples, gt_tuples):
 
 #Eq 6
 #TODO
-def get_face_id_loss(generated, real):
-    mtcnn = MTCNN()
-    resnet = InceptionResnetV1(pretrained='vggface2').eval()
-    img_cropped = mtcnn()
-    embedding = resnet()
-    return torch.zeros(generated.shape()[0])
+def get_face_id_loss(generated, real, device='cuda:0', crop_size=160):
+    # MTCNN uses deprecated features!
+    np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)
+    is_valid_face = lambda i, c, p: c[i] is not None and p[i] > 0.97 
+    build_face_mask = lambda c, p: (i for i, _ in enumerate(c) if is_valid_face(i, c, p))
+
+    mtcnn = MTCNN(image_size=crop_size, select_largest=True, device=device)
+    resnet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
+
+    real_crops, real_probs = mtcnn(real, return_prob=True)
+    gen_crops = mtcnn(generated)
+
+    mask = [i for i, _ in enumerate(c) if is_valid_face(i, real_crops, real_probs)]
+    has_face_real = [real_crops[i] for i in mask]
+    should_have_face_gen = [gen_crops[i] for i in mask]
+
+    real_crops_with_face = torch.stack(has_face_real).to(device)
+    real_embeddings = resnet(real_crops_with_face).detach()
+
+    fill_none_in_gen = [(c if c is not None else torch.zeros((3, crop_size, crop_size))) for c in gen_crops]
+    gen_crops_with_face = torch.stack(fill_none_in_gen).to(device)
+    gen_embeddings = resnet(gen_crops_with_face).detach()
+
+    return get_l1_loss(gen_embeddings, real_embeddings)
 
 
 # def get_gan_loss(generated, real,  args):
@@ -137,8 +156,10 @@ def gan_g_loss(generated, real, G, D, D_aug, args={'device': 'cuda'}):
     #         gen_loss = gen_loss + pl_loss
 
 
-def get_patch_loss():
-    return 
+def get_patch_loss(generated, real, DPatch):
+    d_x = DPatch(real)
+    d_g_z = DPatch(generated)
+    return get_l1_loss(d_g_z, d_x)
 
 
 def _disc_loss_function(real, fake):
