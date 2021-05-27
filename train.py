@@ -133,5 +133,5 @@ if __name__ == "__main__":
     # best_trained_model.load_state_dict(model_state)
 
     # test_acc = test_accuracy(best_trained_model, device)
-    print("Best trial test set accuracy: {}".format(test_acc))
+    #print("Best trial test set accuracy: {}".format(test_acc))
 

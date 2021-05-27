@@ -221,7 +221,7 @@ class StylePoseGAN(pl.LightningModule):
         # G_opt = Adam(self.g_net.G.parameters(), lr=self.g_lr, betas=(0.5, 0.9))
         # D_opt = Adam(self.g_net.D.parameters(), lr=self.d_lr * self.ttur_mult, betas=(0.5, 0.9))
 
-        param_to_min = list(self.a_net.parameters() + list(self.p_net.parameters()) + list(self.g_net.parameters()))
+        param_to_min = list(self.a_net.parameters()) + list(self.p_net.parameters()) + list(self.g_net.parameters())
         param_to_max = list(self.g_net.D.parameters()) + list(self.d_patch.parameters())
         min_opt = Adam(param_to_min, lr=self.g_lr, betas=(0.5, 0.9))
         max_opt = Adam(param_to_max, lr=self.d_lr, betas=(0.5, 0.9))
