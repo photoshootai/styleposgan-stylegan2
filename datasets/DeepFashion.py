@@ -63,14 +63,14 @@ class DeepFashionDataset(Dataset):
     full_texture_path2 = os.path.join(self.texture_path, id2)
 
     #read in the source images (including pose and texture), convert to torch, move to GPU
-    source_img = torch.from_numpy(cv2.imread(full_image_path1)).cuda() 
-    source_pose = torch.from_numpy(cv2.imread(full_pose_path1)).cuda()
-    source_texture = torch.from_numpy(cv2.imread(full_texture_path1)).cuda()
+    source_img = torch.from_numpy(cv2.imread(full_image_path1)) 
+    source_pose = torch.from_numpy(cv2.imread(full_pose_path1))
+    source_texture = torch.from_numpy(cv2.imread(full_texture_path1))
     
     #read in the target images (including pose and texture), convert to torch, move to GPU
-    target_img = torch.from_numpy(cv2.imread(full_image_path2)).cuda() 
-    target_pose = torch.from_numpy(cv2.imread(full_pose_path2)).cuda()
-    target_texture = torch.from_numpy(cv2.imread(full_texture_path2)).cuda()
+    target_img = torch.from_numpy(cv2.imread(full_image_path2)) 
+    target_pose = torch.from_numpy(cv2.imread(full_pose_path2))
+    target_texture = torch.from_numpy(cv2.imread(full_texture_path2))
 
     #put them together
     source_datapoint = (source_img, source_pose, source_texture)

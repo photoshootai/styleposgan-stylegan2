@@ -42,7 +42,7 @@ except:
 
 #import aim
 
-#TODO: Check this
+#TODO: Chec
 #assert torch.cuda.is_available(), 'You need to have an Nvidia GPU with CUDA installed.'
 
 

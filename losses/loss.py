@@ -32,9 +32,9 @@ def get_l1_loss(I_gen, I_gt):
     return l1_loss(I_gen, I_gt)
 
 def get_perceptual_vgg_loss(I_gen, I_gt):
-    vgg = VGG16().cuda()
-    gen_tups = vgg.forward(I_gen)
-    gt_tups  = vgg.forward(I_gt)
+    vgg = VGG16()
+    gen_tups = vgg(I_gen)
+    gt_tups  = vgg(I_gt)
     vgg_loss = calcaluate_l_vgg(gen_tups, gt_tups)
     return vgg_loss
 
