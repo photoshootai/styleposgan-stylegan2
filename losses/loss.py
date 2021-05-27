@@ -61,7 +61,7 @@ def get_face_id_loss(generated, real, device='cuda:0', crop_size=160):
     real_crops, real_probs = mtcnn(real, return_prob=True)
     gen_crops = mtcnn(generated)
 
-    mask = [i for i, _ in enumerate(c) if is_valid_face(i, real_crops, real_probs)]
+    mask = build_face_mask(real_crops, real_probs)
     has_face_real = [real_crops[i] for i in mask]
     should_have_face_gen = [gen_crops[i] for i in mask]
 
