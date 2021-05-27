@@ -66,7 +66,7 @@ class StylePoseGAN(pl.LightningModule):
         min_opt.zero_grad()
         max_opt.zero_grad()
 
-        (I_s, S_pose_map, S_texture_map, ), (I_t, T_pose_map, T_texture_map) = batch #x, y = batch, so x is  the tuple, and y is the triplet
+        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map, T_texture_map) = batch #x, y = batch, so x is  the tuple, and y is the triplet
 
         #PNet
         E_s = self.PNet(S_pose_map)
@@ -77,7 +77,7 @@ class StylePoseGAN(pl.LightningModule):
         z_t = self.ANet(T_texture_map)
 
 
-        input_noise = torch.FloatTensor(batch.size()[0], self.image_size, self.image_size, 1).uniform_(0., 1.).cuda(device)
+        input_noise = torch.FloatTensor(batch.size()[0], self.image_size, self.image_size, 1).uniform_(0., 1.).cuda() #TODO: Fix to generalized case
         I_dash_s = self.g_net.G(z_s, input_noise, E_s) #G(E_s, z_s)            
         I_dash_s_to_t = self.g_net.G(z_s, input_noise, E_t)
         
