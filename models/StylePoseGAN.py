@@ -29,20 +29,21 @@ class StylePoseGAN(pl.LightningModule):
         super().__init__()
         self.a_net = ANet()
         self.p_net = PNet()
-        self.g_net = GNet(image_size=image_size, latent_dim=latent_dim, ) #Contains g_net.G, g_net.D, g_net.D_aug, g_net.S
+        self.g_net = GNet(image_size=image_size, latent_dim=latent_dim ) #Contains g_net.G, g_net.D, g_net.D_aug, g_net.S
 
         self.d_patch = DPatch(3) #Implement D_Patch
 
         self.d_lr = d_lr
         self.g_lr = g_lr
+        self.image_size = image_size
 
         #Disabling Pytorch lightning's default optimizer
         self.automatic_optimization = False
 
     def forward(self, pose_map, texture_map):
         # in lightning, forward defines the prediction/inference actions
-        E = self.PNet(pose_map)
-        z = self.ANet(texture_map)
+        E = self.p_net(pose_map)
+        z = self.a_net(texture_map)
 
         gen_I = self.g_net.G(E, z)
         return gen_I #Forward pass returns the generated image
@@ -51,6 +52,7 @@ class StylePoseGAN(pl.LightningModule):
     # training_step defined the train loop. # It is independent of forward
     def training_step(self, batch, batch_idx):
         apply_path_penalty=False
+        avg_pl_length = 0
 
         #Weights
         weight_l1 =1
@@ -64,18 +66,20 @@ class StylePoseGAN(pl.LightningModule):
         min_opt.zero_grad()
         max_opt.zero_grad()
 
-        (S_pose_map, S_texture_map, I_s), (T_pose_map, T_texture_map, I_t) = batch #x, y = batch, so x is  the tuple, and y is the triplet
 
+        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map, T_texture_map) = batch #x, y = batch, so x is  the tuple, and y is the triplet
+
+        batch_size = I_s.shape[0]
         #PNet
-        E_s = self.PNet(S_pose_map)
-        E_t = self.PNet(T_pose_map)
+        E_s = self.p_net(S_pose_map)
+        E_t = self.p_net(T_pose_map)
 
         #ANet
-        z_s = self.ANet(S_texture_map)
-        z_t = self.ANet(T_texture_map)
+        z_s = self.a_net(S_texture_map)
+        z_t = self.a_net(T_texture_map)
 
 
-        input_noise = None #TODO: make it same as in the lucid rains repo
+        input_noise = torch.FloatTensor(batch_size, self.image_size, self.image_size, 1).uniform_(0., 1.) #TODO: Fix to generalized case
         I_dash_s = self.g_net.G(z_s, input_noise, E_s) #G(E_s, z_s)            
         I_dash_s_to_t = self.g_net.G(z_s, input_noise, E_t)
         
@@ -119,11 +123,11 @@ class StylePoseGAN(pl.LightningModule):
         l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d
         
         min_opt.zero_grad()
-        l_total_to_min.backward()
+        l_total_to_min.manual_backward()
         min_opt.step()
                     
         max_opt.zero_grad()
-        l_total_to_max.backward()
+        l_total_to_max.manual_backward()
         max_opt.step()
         
         # Calculate Moving Averages
@@ -146,7 +150,7 @@ class StylePoseGAN(pl.LightningModule):
         
         
         self.log_dict({'generation_loss': l_total_to_min, 'disc_loss': l_total_to_max}, prog_bar=True)
-        return  {'l_total_to_min': l_total_to_min, 'l_total_to_max': l_total_to_max}
+        #return  {'l_total_to_min': l_total_to_min, 'l_total_to_max': l_total_to_max}
 
 
     #You can customize any part of training (such as the backward pass) by overriding any of the 20+ hooks found in Available Callback hooks
@@ -158,15 +162,21 @@ class StylePoseGAN(pl.LightningModule):
 
     #TODO check this
     def validation_step(self, batch, batch_idx):
-        (S_pose_map, S_texture_map, I_s), (T_pose_map, T_texture_map, I_t) = batch #x, y = batch, so x is  the tuple, and y is the triplet 
+
+        weight_l1 =1
+        weight_vgg = 1
+        weight_face = 1
+        weight_gan = 1
+
+        (I_s, S_pose_map, S_texture_map), (I_t,T_pose_map, T_texture_map) = batch #x, y = batch, so x is  the tuple, and y is the triplet 
 
         #PNet
-        E_s = self.PNet(S_pose_map)
-        E_t = self.PNet(T_pose_map)
+        E_s = self.p_net(S_pose_map)
+        E_t = self.p_net(T_pose_map)
 
         #ANet
-        z_s = self.ANet(S_texture_map)
-        z_t = self.ANet(T_texture_map)
+        z_s = self.a_net(S_texture_map)
+        z_t = self.a_net(T_texture_map)
 
 
         input_noise = None #TODO: make it same as in the lucid rains repo
@@ -221,10 +231,10 @@ class StylePoseGAN(pl.LightningModule):
         # G_opt = Adam(self.g_net.G.parameters(), lr=self.g_lr, betas=(0.5, 0.9))
         # D_opt = Adam(self.g_net.D.parameters(), lr=self.d_lr * self.ttur_mult, betas=(0.5, 0.9))
 
-        param_to_min = list(self.a_net.parameters() + list(self.p_net.parameters()) + list(self.g_net.parameters()))
-        param_to_max = list(self.g_net.D.parameters()) + list(self.d_patch.parameters())
-        min_opt = Adam(param_to_min, lr=self.g_lr, betas=(0.5, 0.9))
-        max_opt = Adam(param_to_max, lr=self.d_lr, betas=(0.5, 0.9))
+        param_to_min = list(self.a_net.parameters()) + list(self.p_net.parameters()) + list(self.g_net.G.parameters())
+        param_to_max = list(self.g_net.D.parameters()) #+ list(self.d_patch.parameters())
+        min_opt = torch.optim.Adam(param_to_min, lr=self.g_lr, betas=(0.5, 0.9))
+        max_opt = torch.optim.Adam(param_to_max, lr=self.d_lr, betas=(0.5, 0.9))
         
         #Can also do learning rate scheduling:
         #optimizers = [G_opt, D_opt]
