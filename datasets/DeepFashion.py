@@ -62,15 +62,15 @@ class DeepFashionDataset(Dataset):
     full_texture_path1 = os.path.join(self.texture_path, id1)
     full_texture_path2 = os.path.join(self.texture_path, id2)
 
-    #read in the source images (including pose and texture), convert to torch, move to GPU
-    source_img = torch.from_numpy(cv2.imread(full_image_path1)) 
-    source_pose = torch.from_numpy(cv2.imread(full_pose_path1))
-    source_texture = torch.from_numpy(cv2.imread(full_texture_path1))
+    #read in the source images (including pose and texture), convert to torch 
+    source_img = torch.from_numpy(cv2.imread(full_image_path1)).float() 
+    source_pose = torch.from_numpy(cv2.imread(full_pose_path1)).float()
+    source_texture = torch.from_numpy(cv2.imread(full_texture_path1)).float()
     
-    #read in the target images (including pose and texture), convert to torch, move to GPU
-    target_img = torch.from_numpy(cv2.imread(full_image_path2)) 
-    target_pose = torch.from_numpy(cv2.imread(full_pose_path2))
-    target_texture = torch.from_numpy(cv2.imread(full_texture_path2))
+    #read in the target images (including pose and texture), convert to torch 
+    target_img = torch.from_numpy(cv2.imread(full_image_path2)).float()
+    target_pose = torch.from_numpy(cv2.imread(full_pose_path2)).float()
+    target_texture = torch.from_numpy(cv2.imread(full_texture_path2)).float()
 
     #put them together
     source_datapoint = (source_img.permute(2, 0, 1), source_pose.permute(2, 0, 1), source_texture.permute(2, 0, 1))
