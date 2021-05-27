@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader, random_split
 import pytorch_lightning as pl
 
 
-from models import ANet, PNet, GNet
+from models import ANet, PNet, GNet, DPatch
 
 #import helpers
 # from stylegan2 import exists, null_context, combine_contexts, default, cast_list, is_empty, raise_if_nan
@@ -31,7 +31,7 @@ class StylePoseGAN(pl.LightningModule):
         self.p_net = PNet()
         self.g_net = GNet(image_size=image_size, latent_dim=latent_dim, ) #Contains g_net.G, g_net.D, g_net.D_aug, g_net.S
 
-        self.d_patch = None #Implement D_Patch
+        self.d_patch = DPatch(3) #Implement D_Patch
 
         self.d_lr = d_lr
         self.g_lr = g_lr
