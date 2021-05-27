@@ -6,7 +6,7 @@ class PNet(nn.Module):
   #Notes:
   #1. the channels input will always be the same, so we can hard code the channels
   #2. the input image dimensions (H*W) will not always be the same, so those are controlled by stride in the residual block class
-    def __init__(self, im_chan=3, batch_size=16):
+    def __init__(self, im_chan=3):
         super(PNet, self).__init__()
         self.res_block1 = ResidualBlock(in_chan=im_chan,out_chan=64)
         self.res_block2 = ResidualBlock(in_chan=64,out_chan=128)

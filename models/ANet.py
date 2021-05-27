@@ -18,7 +18,7 @@ def get_anet_final_block(in_chan=512, out_chan=2048, hidden_chan=1024, kernel_si
     )
 
 class ANet(nn.Module):
-    def __init__(self, im_chan=3, batch_size=16):
+    def __init__(self, im_chan=3):
         super(ANet, self).__init__()
         
         self.res_block1 = ResidualBlock(in_chan=im_chan,out_chan=64)

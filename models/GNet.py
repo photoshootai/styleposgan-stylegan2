@@ -6,7 +6,7 @@ from stylegan2 import Generator, Discriminator, EMA, StyleVectorizer, AugWrapper
 from stylegan2 import set_requires_grad
 
 class GNet(nn.Module):
-    def __init__(self, image_size, latent_dim=512, fmap_max=512, style_depth=8, network_capacity=16, transparent=False, fp16=False, cl_reg=False, steps=1, lr=1e-4, ttur_mult=2, fq_layers=[], fq_dict_size=256, attn_layers=[], lr_mlp=0.1, rank=0):
+    def __init__(self, image_size, latent_dim=2048, fmap_max=512, style_depth=8, network_capacity=16, transparent=False, fp16=False, cl_reg=False, steps=1, lr=1e-4, ttur_mult=2, fq_layers=[], fq_dict_size=256, attn_layers=[], lr_mlp=0.1, rank=0):
         super().__init__()
         self.lr = lr
         self.steps = steps
@@ -49,7 +49,7 @@ class GNet(nn.Module):
         self._init_weights()
         self.reset_parameter_averaging()
 
-        self.cuda(rank)
+        #self.cuda(rank)
 
         #Pytorch Lightning should implement this automatically
         # # startup apex mixed precision

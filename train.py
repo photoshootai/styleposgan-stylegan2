@@ -22,38 +22,35 @@ from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.loggers import TensorBoardLogger
 #from pytorch_lightning.loggers import WandbLogger
 
+from datasets import DeepFashionDataModule
 
 from models.StylePoseGAN import StylePoseGAN
 
-# RayTune
-from ray import tune
-from ray.tune import CLIReporter
-from ray.tune.schedulers import ASHAScheduler
+# # RayTune
+# from ray import tune
+# from ray.tune import CLIReporter
+# from ray.tune.schedulers import ASHAScheduler
 
 
-def main(hparams):
-    model = StylePoseGAN()
+def main(args):
+ 
    #train_loader = DataLoader(dataset, batch_size=batch_size)
-
-
 
     #Logging
     logger = TensorBoardLogger('tb_logs', name='my_model')
 
     #For reporducibility: deterministic = True and 
     seed_everything(42, workers=True)
-    trainer = Trainer(tpu_cores=hparams.tpu_cores, 
-                    precision=hparams.precision, 
-                    accumulate_grad_batches=hparams.accumulate_grad_batches, 
-                    deterministic=True,
-                    logger=logger, 
-                    profiler="simple")
-
-   #trainer.fit(model, train_loader)
-    trainer.fit(model)
+    trainer = Trainer.from_argparse_args(args,logger=logger, profiler="simple")
+   
+    datamodule = DeepFashionDataModule()
+    model = StylePoseGAN(args.image_size)
+    
+    #trainer.fit(model, train_loader)
+    trainer.fit(model, datamodule)
 
 
-    print("Finished Training")
+    print("***Finished Training***")
 
     #Test set evaluation
     #trainer.test(test_dataloaders=test_dataloaders)
@@ -61,7 +58,27 @@ def main(hparams):
 if __name__ == "__main__":
     # You can change the number of GPUs per trial here:
     parser = ArgumentParser()
+
+    #Program args
+    
+
+    #Model Specific Args: hparams specific to models
+    #parser = StylePoseGAN.add_model_specific_args(parser)
+
+    #Trainer Args
+    parser.add_argument('--data_path', type=str, default="./data/deepfashion")
+    parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--gpus', default=None)
+    parser.add_argument('--image_size', type=int, default=512)
+    parser.add_argument('--tpu_cores', type=int, default=None)
+    parser.add_argument('--precision', type=int, default=32 )
+    parser.add_argument('--accumulate_grad_batches', type=int, default=32 )
+    parser.add_argument('--top_k_training', type=bool, default=False)
+    parser.add_argument('--deterministic', type=bool, default=True)
+
+    
+
+
     args = parser.parse_args()
 
     main(args)

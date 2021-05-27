@@ -25,19 +25,16 @@ from losses import gan_g_loss
 
 class StylePoseGAN(pl.LightningModule):
 
-    def __init__(self):
+    def __init__(self, image_size, g_lr=2e-3, d_lr=2e-3, ttur_mult=2, latent_dim=2048, network_capacity=16, attn_layers=[1, 2, 3, 4]):
         super().__init__()
         self.a_net = ANet()
         self.p_net = PNet()
-        self.g_net = GNet() #Contains g_net.G, g_net.D, g_net.D_aug, g_net.S
+        self.g_net = GNet(image_size=image_size, latent_dim=latent_dim, ) #Contains g_net.G, g_net.D, g_net.D_aug, g_net.S
 
         self.d_patch = None #Implement D_Patch
-        
-        self.g_lr = 1e-3
-        self.d_lr = 1e-2
 
-        self.main_lr = 2e-3 #TODO: Check this
-        self.ttur_mult = 2
+        self.d_lr = d_lr
+        self.g_lr = g_lr
 
         #Disabling Pytorch lightning's default optimizer
         self.automatic_optimization = False
@@ -226,8 +223,8 @@ class StylePoseGAN(pl.LightningModule):
 
         param_to_min = list(self.a_net.parameters() + list(self.p_net.parameters()) + list(self.g_net.parameters()))
         param_to_max = list(self.g_net.D.parameters()) + list(self.d_patch.parameters())
-        min_opt = Adam(param_to_min, lr=self.main_lr, betas=(0.5, 0.9))
-        max_opt = Adam(param_to_max, lr=self.main_lr, betas=(0.5, 0.9))
+        min_opt = Adam(param_to_min, lr=self.g_lr, betas=(0.5, 0.9))
+        max_opt = Adam(param_to_max, lr=self.d_lr, betas=(0.5, 0.9))
         
         #Can also do learning rate scheduling:
         #optimizers = [G_opt, D_opt]
@@ -235,3 +232,12 @@ class StylePoseGAN(pl.LightningModule):
         #return optimizers, lr_schedulers
 
         return min_opt, max_opt
+
+    @staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = parent_parser.add_argument_group("StylePoseGAN")
+        parser.add_argument("--latent_dim", type=int, default=2048)
+        parser.add_argument("--network_capacity", type=int, default=16)
+        parser.add_argument("--attn_layers", type=list, default=[1,2, 3, 4])
+
+        return parent_parser

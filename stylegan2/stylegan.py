@@ -1,7 +1,5 @@
 import os
-import sys
 import math
-import fire
 import json
 
 from tqdm import tqdm
@@ -28,8 +26,8 @@ from kornia.filters import filter2D
 
 import torchvision
 from torchvision import transforms
-from stylegan2_pytorch.version import __version__
-from stylegan2_pytorch.diff_augment import DiffAugment
+from .version import __version__
+from .diff_augment import DiffAugment
 
 from vector_quantize_pytorch import VectorQuantize
 
@@ -42,9 +40,10 @@ try:
 except:
     APEX_AVAILABLE = False
 
-import aim
+#import aim
 
-assert torch.cuda.is_available(), 'You need to have an Nvidia GPU with CUDA installed.'
+#TODO: Check this
+#assert torch.cuda.is_available(), 'You need to have an Nvidia GPU with CUDA installed.'
 
 
 # constants
@@ -926,7 +925,7 @@ class Trainer():
         self.rank = rank
         self.world_size = world_size
 
-        self.logger = aim.Session(experiment=name) if log else None
+        #self.logger = aim.Session(experiment=name) if log else None
 
     @property
     def image_extension(self):
