@@ -29,12 +29,13 @@ class StylePoseGAN(pl.LightningModule):
         super().__init__()
         self.a_net = ANet()
         self.p_net = PNet()
-        self.g_net = GNet(image_size=image_size, latent_dim=latent_dim, ) #Contains g_net.G, g_net.D, g_net.D_aug, g_net.S
+        self.g_net = GNet(image_size=image_size, latent_dim=latent_dim ) #Contains g_net.G, g_net.D, g_net.D_aug, g_net.S
 
         self.d_patch = None #Implement D_Patch
 
         self.d_lr = d_lr
         self.g_lr = g_lr
+        self.image_size = image_size
 
         #Disabling Pytorch lightning's default optimizer
         self.automatic_optimization = False
@@ -51,6 +52,7 @@ class StylePoseGAN(pl.LightningModule):
     # training_step defined the train loop. # It is independent of forward
     def training_step(self, batch, batch_idx):
         apply_path_penalty=False
+        avg_pl_length = 0
 
         #Weights
         weight_l1 =1
@@ -64,7 +66,7 @@ class StylePoseGAN(pl.LightningModule):
         min_opt.zero_grad()
         max_opt.zero_grad()
 
-        (S_pose_map, S_texture_map, I_s), (T_pose_map, T_texture_map, I_t) = batch #x, y = batch, so x is  the tuple, and y is the triplet
+        (I_s, S_pose_map, S_texture_map, ), (I_t, T_pose_map, T_texture_map) = batch #x, y = batch, so x is  the tuple, and y is the triplet
 
         #PNet
         E_s = self.PNet(S_pose_map)
@@ -75,7 +77,7 @@ class StylePoseGAN(pl.LightningModule):
         z_t = self.ANet(T_texture_map)
 
 
-        input_noise = None #TODO: make it same as in the lucid rains repo
+        input_noise = torch.FloatTensor(batch.size()[0], self.image_size, self.image_size, 1).uniform_(0., 1.).cuda(device)
         I_dash_s = self.g_net.G(z_s, input_noise, E_s) #G(E_s, z_s)            
         I_dash_s_to_t = self.g_net.G(z_s, input_noise, E_t)
         
@@ -158,6 +160,12 @@ class StylePoseGAN(pl.LightningModule):
 
     #TODO check this
     def validation_step(self, batch, batch_idx):
+
+        weight_l1 =1
+        weight_vgg = 1
+        weight_face = 1
+        weight_gan = 1
+
         (S_pose_map, S_texture_map, I_s), (T_pose_map, T_texture_map, I_t) = batch #x, y = batch, so x is  the tuple, and y is the triplet 
 
         #PNet
@@ -222,7 +230,7 @@ class StylePoseGAN(pl.LightningModule):
         # D_opt = Adam(self.g_net.D.parameters(), lr=self.d_lr * self.ttur_mult, betas=(0.5, 0.9))
 
         param_to_min = list(self.a_net.parameters()) + list(self.p_net.parameters()) + list(self.g_net.parameters())
-        param_to_max = list(self.g_net.D.parameters()) + list(self.d_patch.parameters())
+        param_to_max = list(self.g_net.D.parameters()) #+ list(self.d_patch.parameters())
         min_opt = Adam(param_to_min, lr=self.g_lr, betas=(0.5, 0.9))
         max_opt = Adam(param_to_max, lr=self.d_lr, betas=(0.5, 0.9))
         
