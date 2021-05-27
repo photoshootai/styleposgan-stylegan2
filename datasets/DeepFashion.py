@@ -73,8 +73,8 @@ class DeepFashionDataset(Dataset):
     target_texture = torch.from_numpy(cv2.imread(full_texture_path2))
 
     #put them together
-    source_datapoint = (source_img, source_pose, source_texture)
-    target_datapoint = (target_img, target_pose, target_texture)
+    source_datapoint = (source_img.permute(2, 0, 1), source_pose.permute(2, 0, 1), source_texture.permute(2, 0, 1))
+    target_datapoint = (target_img.permute(2, 0, 1), target_pose.permute(2, 0, 1), target_texture.permute(2, 0, 1))
 
     return source_datapoint, target_datapoint
 
