@@ -43,8 +43,8 @@ class StylePoseGAN(pl.LightningModule):
 
     def forward(self, pose_map, texture_map):
         # in lightning, forward defines the prediction/inference actions
-        E = self.PNet(pose_map)
-        z = self.ANet(texture_map)
+        E = self.p_net(pose_map)
+        z = self.a_net(texture_map)
 
         gen_I = self.g_net.G(E, z)
         return gen_I #Forward pass returns the generated image
@@ -72,12 +72,12 @@ class StylePoseGAN(pl.LightningModule):
 
         batch_size = I_s.shape[0]
         #PNet
-        E_s = self.PNet(S_pose_map)
-        E_t = self.PNet(T_pose_map)
+        E_s = self.p_net(S_pose_map)
+        E_t = self.p_net(T_pose_map)
 
         #ANet
-        z_s = self.ANet(S_texture_map)
-        z_t = self.ANet(T_texture_map)
+        z_s = self.a_net(S_texture_map)
+        z_t = self.a_net(T_texture_map)
 
 
         input_noise = torch.FloatTensor(batch_size, self.image_size, self.image_size, 1).uniform_(0., 1.) #TODO: Fix to generalized case
@@ -169,15 +169,15 @@ class StylePoseGAN(pl.LightningModule):
         weight_face = 1
         weight_gan = 1
 
-        (S_pose_map, S_texture_map, I_s), (T_pose_map, T_texture_map, I_t) = batch #x, y = batch, so x is  the tuple, and y is the triplet 
+        (I_s, S_pose_map, S_texture_map), (I_t,T_pose_map, T_texture_map) = batch #x, y = batch, so x is  the tuple, and y is the triplet 
 
         #PNet
-        E_s = self.PNet(S_pose_map)
-        E_t = self.PNet(T_pose_map)
+        E_s = self.p_net(S_pose_map)
+        E_t = self.p_net(T_pose_map)
 
         #ANet
-        z_s = self.ANet(S_texture_map)
-        z_t = self.ANet(T_texture_map)
+        z_s = self.a_net(S_texture_map)
+        z_t = self.a_net(T_texture_map)
 
 
         input_noise = None #TODO: make it same as in the lucid rains repo
