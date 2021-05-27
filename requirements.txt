@@ -1,55 +1,55 @@
-absl-py @ file:///home/conda/feedstock_root/build_artifacts/absl-py_1615404881292/work
+absl-py 
 aiohttp==3.7.4.post0
 aiohttp-cors==0.7.0
 aioredis==1.3.1
 async-timeout==3.0.1
-attrs @ file:///home/conda/feedstock_root/build_artifacts/attrs_1620387926260/work
+attrs 
 blessings==1.7
 blinker==1.4
 brotlipy==0.7.0
-cachetools @ file:///home/conda/feedstock_root/build_artifacts/cachetools_1619593780156/work
+cachetools
 certifi==2020.12.5
-cffi @ file:///Users/runner/miniforge3/conda-bld/cffi_1613414067184/work
+cffi 
 chardet==4.0.0
-click @ file:///Users/runner/miniforge3/conda-bld/click_1621503759047/work
+click @
 colorama==0.4.4
 configparser==5.0.2
-cryptography @ file:///Users/runner/miniforge3/conda-bld/cryptography_1616851512278/work
+cryptography 
 docker-pycreds==0.4.0
 einops==0.3.0
 facenet-pytorch==2.5.2
 filelock==3.0.12
-fsspec @ file:///home/conda/feedstock_root/build_artifacts/fsspec_1621008914210/work
-future @ file:///Users/runner/miniforge3/conda-bld/future_1610147350851/work
+fsspec 
+future 
 gitdb==4.0.7
 GitPython==3.1.17
 google-api-core==1.28.0
-google-auth @ file:///home/conda/feedstock_root/build_artifacts/google-auth_1619638455278/work
+google-auth 
 google-auth-oauthlib==0.4.1
 googleapis-common-protos==1.53.0
 gpustat==0.6.0
 grpcio==1.38.0
 hiredis==2.0.0
-idna @ file:///home/conda/feedstock_root/build_artifacts/idna_1593328102638/work
-importlib-metadata @ file:///Users/runner/miniforge3/conda-bld/importlib-metadata_1619012232815/work
+idna 
+importlib-metadata 
 jsonschema==3.2.0
 kornia==0.5.2
-Markdown @ file:///home/conda/feedstock_root/build_artifacts/markdown_1614595805172/work
+Markdown 
 mkl-fft==1.3.0
-mkl-random @ file:///opt/concourse/worker/volumes/live/54b31a45-1da5-4512-5c3a-93c9ff2af8bc/volume/mkl_random_1618853970587/work
+mkl-random 
 mkl-service==2.3.0
 msgpack==1.0.2
-multidict @ file:///Users/runner/miniforge3/conda-bld/multidict_1610319065069/work
-numpy @ file:///opt/concourse/worker/volumes/live/84716fc3-63c0-4ad6-5a23-37f5ad6b3bfa/volume/numpy_and_numpy_base_1618497240837/work
+multidict 
+numpy 
 nvidia-ml-py3==7.352.0
 oauthlib==3.0.1
 olefile==0.46
 opencensus==0.7.13
 opencensus-context==0.1.2
-packaging @ file:///home/conda/feedstock_root/build_artifacts/packaging_1612459636436/work
+packaging 
 pandas==1.2.4
 pathtools==0.1.2
-Pillow @ file:///opt/concourse/worker/volumes/live/ca23594b-6e35-4c8c-5637-50ac0b550473/volume/pillow_1617386168018/work
+Pillow 
 prometheus-client==0.10.1
 promise==2.3
 protobuf==3.17.0
