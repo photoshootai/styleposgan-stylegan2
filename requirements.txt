@@ -81,7 +81,7 @@ subprocess32==3.5.4
 tensorboard
 tensorboard-plugin-wit
 torch==1.8.1
-torchaudio==0.8.0a0+e4e171a
+torchaudio==0.8
 torchmetrics
 torchvision==0.9.1
 tqdm
