@@ -4,12 +4,36 @@ import cv2
 
 import numpy as np
 import pytorch_lightning as pl
+from torchvision import transforms
 
 from torch.utils.data import Dataset, DataLoader, random_split
+from functools import partial
+
+from PIL import Image
+
+def resize_to_minimum_size(min_size, image):
+    if max(*image.size) < min_size:
+        return transforms.functional.resize(image, min_size)
+    return image
 
 
 class DeepFashionDataset(Dataset):
-  def __init__(self, source_image_path, pose_map_path, texture_map_path, train=False, batch_size=32):
+  def __init__(self, source_image_path, pose_map_path, texture_map_path, image_size, train=False, batch_size=32):
+    
+
+    self.img_transform = transforms.Compose([
+            transforms.Lambda(partial(resize_to_minimum_size, image_size)),
+            transforms.Resize(image_size),
+            #RandomApply(aug_prob, transforms.RandomResizedCrop(image_size, scale=(0.5, 1.0), ratio=(0.98, 1.02)), transforms.CenterCrop(image_size)),
+            transforms.ToTensor(),
+            #transforms.Lambda(expand_greyscale(transparent))
+        ])
+    
+    self.texture_transform = transforms.Compose([
+      transforms.ToTensor()
+    ])
+    
+    
     self.batch_size = batch_size
     self.img_path = source_image_path
     self.pose_path = pose_map_path
@@ -63,18 +87,18 @@ class DeepFashionDataset(Dataset):
     full_texture_path2 = os.path.join(self.texture_path, id2)
 
     #read in the source images (including pose and texture), convert to torch 
-    source_img = torch.from_numpy(cv2.imread(full_image_path1)).float() 
-    source_pose = torch.from_numpy(cv2.imread(full_pose_path1)).float()
-    source_texture = torch.from_numpy(cv2.imread(full_texture_path1)).float()
+    source_img = Image.open(full_image_path1) 
+    source_pose = Image.open(full_pose_path1)
+    source_texture = Image.open(full_texture_path1)
     
     #read in the target images (including pose and texture), convert to torch 
-    target_img = torch.from_numpy(cv2.imread(full_image_path2)).float()
-    target_pose = torch.from_numpy(cv2.imread(full_pose_path2)).float()
-    target_texture = torch.from_numpy(cv2.imread(full_texture_path2)).float()
+    target_img = Image.open(full_image_path2)
+    target_pose = Image.open(full_pose_path2)
+    target_texture = Image.open(full_texture_path2)
 
     #put them together
-    source_datapoint = (source_img.permute(2, 0, 1), source_pose.permute(2, 0, 1), source_texture.permute(2, 0, 1))
-    target_datapoint = (target_img.permute(2, 0, 1), target_pose.permute(2, 0, 1), target_texture.permute(2, 0, 1))
+    source_datapoint = (self.img_transform(source_img), self.img_transform(source_pose), self.texture_transform(source_texture))
+    target_datapoint = (self.img_transform(target_img), self.img_transform(target_pose), self.texture_transform(target_texture))
 
     return source_datapoint, target_datapoint
 
