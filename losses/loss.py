@@ -28,7 +28,7 @@ def get_reconstruction_loss(generated, real,  loss_weights, args):
 
     
 #Eq 4 in paper
-def get_l1_loss(I_gen, I_gt, reduction='sum'):
+def get_l1_loss(I_gen, I_gt, reduction='mean'):
     l1_loss = nn.L1Loss(reduction=reduction)
     return l1_loss(I_gen, I_gt)
 
@@ -213,7 +213,7 @@ def get_patch_loss(generated: torch.Tensor, real: torch.Tensor,
     """
     d_x = DPatch(real)
     d_g_z = DPatch(generated)
-    loss = get_l1_loss(d_g_z, d_x)
+    loss = get_l1_loss(d_g_z, d_x, reduction='mean')
     return loss
 
 
