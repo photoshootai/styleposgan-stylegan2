@@ -195,10 +195,26 @@ def gan_g_loss(generated, real, G, D, D_aug, args={'device': 'cuda'}):
     #         gen_loss = gen_loss + pl_loss
 
 
-def get_patch_loss(generated, real, DPatch):
+def get_patch_loss(generated: torch.Tensor, real: torch.Tensor,
+                   DPatch: torch.nn.Module) -> torch.Tensor:
+    """
+    Produce patch loss betweeen generated and real image using DPatch patch discriminator
+
+    Arguments:
+        generated [torch.Tensor (batch, C, H, W)]: generated image batch
+        real [torch.Tensor (batch, C, H, W)]: real image batch
+        DPatch [torch.nn.Module]: Patch discrimator with forward
+    
+    Returns:
+        loss: [torch.Tensor (0)]: rank 0 tensor representing a scalar loss value
+
+    Side Effects:
+        None    
+    """
     d_x = DPatch(real)
     d_g_z = DPatch(generated)
-    return get_l1_loss(d_g_z, d_x)
+    loss = get_l1_loss(d_g_z, d_x)
+    return loss
 
 
 def _disc_loss_function(real, fake):
