@@ -31,7 +31,7 @@ class StylePoseGAN(pl.LightningModule):
         self.p_net = PNet()
         self.g_net = GNet(image_size=image_size, latent_dim=latent_dim ) #Contains g_net.G, g_net.D, g_net.D_aug, g_net.S
 
-        self.d_patch = DPatch(3) #Implement D_Patch
+        self.d_patch = DPatch() # Needs to be on same device as data!
 
         self.d_lr = d_lr
         self.g_lr = g_lr
