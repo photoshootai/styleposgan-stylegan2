@@ -524,11 +524,11 @@ class GeneratorBlock(nn.Module):
 
         inoise = inoise[:, :x.shape[2], :x.shape[3], :]
         
-        
-        noise1 = self.to_noise1(inoise).permute((0, 3, 2, 1))
+        print("Noise 1 before permutation is: ", inoise.shape)
+        noise1 = self.to_noise1(inoise).permute((0, 3, 1, 2)) # was earlier ((0, 3, 2, 1))
         print("Noise1 shape is " + str(noise1.size()))
 
-        noise2 = self.to_noise2(inoise).permute((0, 3, 2, 1))
+        noise2 = self.to_noise2(inoise).permute((0, 3, 1, 2)) # was earlier ((0, 3, 2, 1))
 
         style1 = self.to_style1(istyle)
         x = self.conv1(x, style1)
@@ -588,18 +588,21 @@ class Generator(nn.Module):
         super().__init__()
         self.image_size = image_size
         self.latent_dim = latent_dim
-        self.num_layers = 4 #This will alwayus be 4 as discussed, may need to make this into a hyperparam? #int(log2(image_size) - 1))
 
-        #Changed 2 ** (i + 1) -> 2 ** (i + 2) to filters of 512, 256, 128, 64
-        filters = [network_capacity * (2 ** (i + 2)) for i in range(self.num_layers)][::-1]
+        #First block is now upsampling: so 1 be non-upsamling and the remaining 4 will be
+        self.num_layers = 5 #This will alwayus be 4 as discussed, may need to make this into a hyperparam? #int(log2(image_size) - 1))
 
+        #Does not apply anymore #Changed 2 ** (i + 1) -> 2 ** (i + 2) to filters of 512, 256, 128, 64
+        #Now filters = [512, 256, 128, 64, 32]
+        filters = [network_capacity * (2 ** (i + 1)) for i in range(self.num_layers)][::-1]
+
+
+        #fmap_max bounds the maximum size of the first filter
         set_fmap_max = partial(min, fmap_max)
         filters = list(map(set_fmap_max, filters))
         init_channels = filters[0]
         filters = [init_channels, *filters]
-
         in_out_pairs = zip(filters[:-1], filters[1:])
-
 
         # if no_const:
         #     self.to_initial_block = nn.ConvTranspose2d(latent_dim, init_channels, 4, 1, 0, bias=False)
@@ -629,6 +632,8 @@ class Generator(nn.Module):
             )
             
             self.blocks.append(block)
+        
+        print("No of Gen Blocks created: ", len(self.blocks))
 
     #Added s_input as an additional argument to forward
     def forward(self, z_inputs, input_noise, s_input):
@@ -652,13 +657,17 @@ class Generator(nn.Module):
         x = self.initial_conv(x)
         print("X dim after convolution is: " + str(x.size()))
         
+        count = 0
+        print("Zipped: ", len(z_inputs))
         for z_input, block, attn in zip(z_inputs, self.blocks, self.attns):
+            count+=1
             if exists(attn): 
                 print("X dim before attention" + str(x.size()))
                 x = attn(x)
                 print("X dim after attention" + str(x.size()))
             x, rgb = block(x, rgb, z_input, input_noise)
 
+        print(count)
         return rgb
 
 class Discriminator(nn.Module):
