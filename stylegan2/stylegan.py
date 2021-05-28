@@ -502,7 +502,7 @@ class GeneratorBlock(nn.Module):
         super().__init__()
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False) if upsample else None
 
-        self.to_style1 =  nn.Linear(latent_dim, input_channels) #TODO? change to 2048 input_channels
+        self.to_style1 =  nn.Linear(latent_dim, input_channels) 
         self.to_noise1 = nn.Linear(1, filters)
         self.conv1 = Conv2DMod(input_channels, filters, 3)
         
@@ -519,8 +519,12 @@ class GeneratorBlock(nn.Module):
         if exists(self.upsample):
             x = self.upsample(x)
             print("X Dim after upsampling " + str(x.size()))
-       
+
+        print("inoise size and device is", inoise.size(), inoise.device) 
+
         inoise = inoise[:, :x.shape[2], :x.shape[3], :]
+        
+        
         noise1 = self.to_noise1(inoise).permute((0, 3, 2, 1))
         print("Noise1 shape is " + str(noise1.size()))
 
@@ -647,7 +651,7 @@ class Generator(nn.Module):
         print("Initial Conv Dims is: " + str(self.initial_conv))
         x = self.initial_conv(x)
         print("X dim after convolution is: " + str(x.size()))
-
+        
         for z_input, block, attn in zip(z_inputs, self.blocks, self.attns):
             if exists(attn): 
                 print("X dim before attention" + str(x.size()))

@@ -26,7 +26,7 @@ from losses import gan_g_loss
 
 class StylePoseGAN(pl.LightningModule):
 
-    def __init__(self, image_size, g_lr=2e-3, d_lr=2e-3, ttur_mult=2, latent_dim=2048, network_capacity=16, attn_layers=[1, 2, 3, 4]):
+    def __init__(self, image_size, batch_size, g_lr=2e-3, d_lr=2e-3, ttur_mult=2, latent_dim=2048, network_capacity=16, attn_layers=[1, 2, 3, 4]):
         super().__init__()
         self.a_net = ANet()
         self.p_net = PNet()
@@ -37,6 +37,12 @@ class StylePoseGAN(pl.LightningModule):
         self.d_lr = d_lr
         self.g_lr = g_lr
         self.image_size = image_size
+
+        print("StylePoseGAN Device", self.device)
+
+        self.register_buffer("input_noise", torch.randn(batch_size, self.image_size, self.image_size, 1))
+        # self.input_noise = , device= self.device)
+        # self.input_noise = torch.FloatTensor(batch_size, self.image_size, self.image_size, 1, device=self.device).uniform_(0., 1.) #TODO: Fix to generalized case
 
         #Disabling Pytorch lightning's default optimizer
         self.automatic_optimization = False
@@ -70,7 +76,7 @@ class StylePoseGAN(pl.LightningModule):
 
         (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map, T_texture_map) = batch #x, y = batch, so x is  the tuple, and y is the triplet
 
-        batch_size = I_s.shape[0]
+
         #PNet
         E_s = self.p_net(S_pose_map)
         E_t = self.p_net(T_pose_map)
@@ -80,9 +86,8 @@ class StylePoseGAN(pl.LightningModule):
         z_t = self.a_net(T_texture_map)
 
 
-        input_noise = torch.FloatTensor(batch_size, self.image_size, self.image_size, 1).uniform_(0., 1.) #TODO: Fix to generalized case
-        I_dash_s = self.g_net.G(z_s, input_noise, E_s) #G(E_s, z_s)            
-        I_dash_s_to_t = self.g_net.G(z_s, input_noise, E_t)
+        I_dash_s = self.g_net.G(z_s, self.input_noise, E_s) #G(E_s, z_s)            
+        I_dash_s_to_t = self.g_net.G(z_s, self.input_noise, E_t)
         
         #Need to detach at the top level 
         rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) + \
@@ -171,6 +176,7 @@ class StylePoseGAN(pl.LightningModule):
 
         (I_s, S_pose_map, S_texture_map), (I_t,T_pose_map, T_texture_map) = batch #x, y = batch, so x is  the tuple, and y is the triplet 
 
+        
         #PNet
         E_s = self.p_net(S_pose_map)
         E_t = self.p_net(T_pose_map)
@@ -180,9 +186,8 @@ class StylePoseGAN(pl.LightningModule):
         z_t = self.a_net(T_texture_map)
 
 
-        input_noise = None #TODO: make it same as in the lucid rains repo
-        I_dash_s = self.g_net.G(z_s, input_noise, E_s) #G(E_s, z_s)            
-        I_dash_s_to_t = self.g_net.G(z_s, input_noise, E_t)
+        I_dash_s = self.g_net.G(z_s, self.input_noise, E_s) #G(E_s, z_s)            
+        I_dash_s_to_t = self.g_net.G(z_s, self.input_noise, E_t)
 
 
         #Need to detach at the top level 

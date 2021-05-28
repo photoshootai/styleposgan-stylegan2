@@ -35,7 +35,7 @@ def get_perceptual_vgg_loss(I_gen, I_gt):
     vgg = VGG16()
     gen_tups = vgg(I_gen)
     gt_tups  = vgg(I_gt)
-    vgg_loss = calcaluate_l_vgg(gen_tups, gt_tups)
+    vgg_loss = calcaluate_l_vgg(gen_tups, gt_tups).detach()
     return vgg_loss
 
 #Eq 5
