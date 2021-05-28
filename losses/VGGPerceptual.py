@@ -7,9 +7,9 @@ See, fast_neural_style in https://github.com/pytorch/examples.
 import torch
 from torchvision import models
 
-class VGG16(torch.nn.Module):
+class VGG16Perceptual(torch.nn.Module):
     def __init__(self, requires_grad=False):
-        super(VGG16, self).__init__()
+        super(VGG16Perceptual, self).__init__()
         vgg_pretrained_features = models.vgg16(pretrained=True).features
         self.slice1 = torch.nn.Sequential()
         self.slice2 = torch.nn.Sequential()

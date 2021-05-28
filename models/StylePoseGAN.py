@@ -1,4 +1,3 @@
-from losses.loss import gan_d_loss, get_face_id_loss, get_l1_loss, get_perceptual_vgg_loss
 import os
 import torch
 import torch
@@ -22,7 +21,8 @@ from models import ANet, PNet, GNet
 from stylegan2 import *
 
 #Import losses
-from losses import gan_g_loss
+
+from losses import gan_g_loss, gan_d_loss, get_face_id_loss, get_l1_loss, get_perceptual_vgg_loss, VGG16Perceptual
 
 class StylePoseGAN(pl.LightningModule):
 
@@ -32,11 +32,17 @@ class StylePoseGAN(pl.LightningModule):
         self.p_net = PNet()
         self.g_net = GNet(image_size=image_size, latent_dim=latent_dim ) #Contains g_net.G, g_net.D, g_net.D_aug, g_net.S
 
+
+        #Loss calculation models
+        self.vgg16_perceptual_model = VGG16Perceptual(requires_grad=False)
         self.d_patch = None #Implement D_Patch
 
         self.d_lr = d_lr
         self.g_lr = g_lr
         self.image_size = image_size
+
+
+
 
         print("StylePoseGAN Device", self.device)
 
@@ -86,6 +92,7 @@ class StylePoseGAN(pl.LightningModule):
         z_t = self.a_net(T_texture_map)
 
 
+        #Create model 
 
         #Repeat z num_layer times
         I_dash_s = self.g_net.G(z_s.repeat(1, 5, 1), self.input_noise, E_s) #G(E_s, z_s)            
@@ -93,11 +100,11 @@ class StylePoseGAN(pl.LightningModule):
         
         #Need to detach at the top level 
         rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) + \
-                      weight_vgg * get_perceptual_vgg_loss(I_dash_s, I_s) + \
+                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
                       weight_face * get_face_id_loss(I_dash_s, I_s)
                                 
         rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) + \
-                      weight_vgg * get_perceptual_vgg_loss(I_dash_s_to_t, I_t) + \
+                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
                       weight_face * get_face_id_loss(I_dash_s_to_t, I_t) 
 
         gan_loss_1_g = gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
@@ -192,13 +199,12 @@ class StylePoseGAN(pl.LightningModule):
         I_dash_s_to_t = self.g_net.G(z_s.repeat(1, 5, 1), self.input_noise, E_t)
 
 
-        #Need to detach at the top level 
         rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) + \
-                      weight_vgg * get_perceptual_vgg_loss(I_dash_s, I_s) + \
+                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
                       weight_face * get_face_id_loss(I_dash_s, I_s)
                                 
         rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) + \
-                      weight_vgg * get_perceptual_vgg_loss(I_dash_s_to_t, I_t) + \
+                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
                       weight_face * get_face_id_loss(I_dash_s_to_t, I_t) 
 
         gan_loss_1_g = gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)

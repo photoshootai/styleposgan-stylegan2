@@ -1,5 +1,4 @@
 import torch
-from losses.VGGPerceptual import VGG16
 import torch.nn as nn
 from torchvision import models
 from stylegan2 import hinge_loss, gen_hinge_loss
@@ -31,16 +30,16 @@ def get_l1_loss(I_gen, I_gt):
     l1_loss = nn.L1Loss(reduction="sum")
     return l1_loss(I_gen, I_gt)
 
-def get_perceptual_vgg_loss(I_gen, I_gt):
-    vgg = VGG16()
-    gen_tups = vgg(I_gen)
-    gt_tups  = vgg(I_gt)
-    vgg_loss = calcaluate_l_vgg(gen_tups, gt_tups).detach()
+def get_perceptual_vgg_loss(vgg_perceptual_model, I_gen, I_gt):
+    
+    gen_tups = vgg_perceptual_model(I_gen)
+    gt_tups  = vgg_perceptual_model(I_gt)
+    vgg_loss = calcaluate_l_vgg(gen_tups, gt_tups)
     return vgg_loss
 
 #Eq 5
 def calcaluate_l_vgg(gen_tuples, gt_tuples):
-    #TODO: Vectorization
+    #TODO: Vectorization?
     total = 0
     for i in range(len(gen_tuples)):
         total += (1/len(gen_tuples[i])) * get_l1_loss(gen_tuples[i], gt_tuples[i])
@@ -55,20 +54,6 @@ def get_face_id_loss(generated, real):
     embedding = resnet()
     return torch.zeros(generated.shape()[0])
 
-
-# def get_gan_loss(generated, real,  args):
-#     d_x = D_aug(real)
-#     d_g_z = D_aug(generated)
-
-
-
-
-#     gan_loss = gan_d_loss() + gan_g_loss()
-    #return torch.log(d_x) + torch.log(1 - d_g_z)
-
-"""
-Don't know if we need these two below, but this basically define G and D's losses using BCE seperately, following the usual Pytorch tutorial
-"""
 def gan_d_loss(generated, real, G, D, D_aug, detach=True,  args={'device': 'cuda'}):
 
     #Training Discriminator
@@ -87,11 +72,12 @@ def gan_d_loss(generated, real, G, D, D_aug, detach=True,  args={'device': 'cuda
     disc_loss_fake = criterion(fake_output, fake_label)
 
     total_disc_loss = disc_loss_real + disc_loss_fake 
-    if args["epoch_id"] % 4== 0:
-        gp = gradient_penalty(image_batch, real_output)
-        last_gp_loss = gp.clone().detach().item()
-        #track(last_gp_loss, 'GP')
-        disc_loss = disc_loss + gd
+    #TODO: Check this
+    # if args["epoch_id"] % 4== 0:
+    #     gp = gradient_penalty(image_batch, real_output)
+    #     last_gp_loss = gp.clone().detach().item()
+    #     #track(last_gp_loss, 'GP')
+    #     total_disc_loss = total_disc_loss + gd
 
     return total_disc_loss
 
@@ -139,11 +125,3 @@ def gan_g_loss(generated, real, G, D, D_aug, args={'device': 'cuda'}):
 
 def get_patch_loss():
     return 
-
-
-def _disc_loss_function(real, fake):
-    pass
-
-
-def _gen_loss_function(real, fake):
-    pass
