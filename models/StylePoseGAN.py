@@ -118,11 +118,9 @@ class StylePoseGAN(pl.LightningModule):
                       weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
                       weight_face * get_face_id_loss(I_dash_s_to_t, I_t, self.mtcnn, self.resnet, crop_size=self.mtcnn_crop_size) 
 
-        gan_loss_1_g = gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
-        gan_loss_2_g = gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
 
-        gan_loss_1_d = gan_d_loss(I_dash_s.clone().detach(), I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
-        gan_loss_2_d = gan_d_loss(I_dash_s_to_t.clone().detach(), I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
+        gan_loss_1_d = gan_d_loss(I_dash_s.detach(), I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
+        gan_loss_2_d = gan_d_loss(I_dash_s_to_t.detach(), I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
 
         patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
         """
@@ -143,13 +141,6 @@ class StylePoseGAN(pl.LightningModule):
         and {D, DPatch} being the "D" being maximized
         """
 
-        #This is the total loss that needs to be minimized. The only GAN loss here is -log(D(G(z)) times two for the two reconstruction losses
-        l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g 
-        
-        min_opt.zero_grad()
-        l_total_to_min.backward(retain_graph=True)
-        min_opt.step()
-        
         #Total Loss that needs to be maximized. The only GAN loss here is -[log(D(x)) + log(1-D(G(z)))] for the respective args
         l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d + patch_loss
         
@@ -158,9 +149,21 @@ class StylePoseGAN(pl.LightningModule):
         # min_opt.step()
                     
         max_opt.zero_grad()
-        l_total_to_max.backward()
+        self.manual_backward(l_total_to_max)
         max_opt.step()
+
+
+        gan_loss_1_g = gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
+        gan_loss_2_g = gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
         
+        #This is the total loss that needs to be minimized. The only GAN loss here is -log(D(G(z)) times two for the two reconstruction losses
+        l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g 
+        
+        min_opt.zero_grad()
+        self.manual_backward(l_total_to_min)
+        min_opt.step()
+        
+
         # Calculate Moving Averages
         if apply_path_penalty and not np.isnan(avg_pl_length):
             self.pl_mean = self.pl_length_ma.update_average(self.pl_mean, avg_pl_length)
@@ -173,7 +176,6 @@ class StylePoseGAN(pl.LightningModule):
             self.GAN.reset_parameter_averaging()
 
         # save from NaN errors
-
         if any(torch.isnan(l) for l in (l_total_to_min, l_total_to_max)):
             print(f'NaN detected for generator or discriminator. Loading from checkpoint #{self.checkpoint_num}')
             self.load(self.checkpoint_num)
@@ -228,11 +230,11 @@ class StylePoseGAN(pl.LightningModule):
                       weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
                       weight_face * get_face_id_loss(I_dash_s_to_t, I_t, self.mtcnn, self.resnet, crop_size=self.mtcnn_crop_size) 
 
+        gan_loss_1_d = gan_d_loss(I_dash_s.detach(), I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
+        gan_loss_2_d = gan_d_loss(I_dash_s_to_t.detach(), I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
+        
         gan_loss_1_g = gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
         gan_loss_2_g = gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
-
-        gan_loss_1_d = gan_d_loss(I_dash_s.clone().detach(), I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
-        gan_loss_2_d = gan_d_loss(I_dash_s_to_t.clone().detach(), I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
 
         patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
         """
