@@ -1,4 +1,3 @@
-from losses.loss import gan_d_loss, get_face_id_loss, get_l1_loss, get_perceptual_vgg_loss
 import os
 import torch
 import torch
@@ -21,21 +20,35 @@ from models import ANet, PNet, GNet, DPatch
 from stylegan2 import *
 
 #Import losses
-from losses import gan_g_loss
+
+from losses import gan_g_loss, gan_d_loss, get_face_id_loss, get_l1_loss, get_perceptual_vgg_loss, VGG16Perceptual
 
 class StylePoseGAN(pl.LightningModule):
 
-    def __init__(self, image_size, g_lr=2e-3, d_lr=2e-3, ttur_mult=2, latent_dim=2048, network_capacity=16, attn_layers=[1, 2, 3, 4]):
+    def __init__(self, image_size, batch_size, g_lr=2e-3, d_lr=2e-3, ttur_mult=2, latent_dim=2048, network_capacity=16, attn_layers=[1, 2, 3, 4]):
         super().__init__()
         self.a_net = ANet()
         self.p_net = PNet()
         self.g_net = GNet(image_size=image_size, latent_dim=latent_dim ) #Contains g_net.G, g_net.D, g_net.D_aug, g_net.S
 
-        self.d_patch = DPatch() # Needs to be on same device as data!
+        
 
+        #Loss calculation models
+        self.vgg16_perceptual_model = VGG16Perceptual(requires_grad=False)
+        self.d_patch = DPatch() # Needs to be on same device as data!
+        
         self.d_lr = d_lr
         self.g_lr = g_lr
         self.image_size = image_size
+
+
+
+
+        print("StylePoseGAN Device", self.device)
+
+        self.register_buffer("input_noise", torch.randn(batch_size, self.image_size, self.image_size, 1))
+        # self.input_noise = , device= self.device)
+        # self.input_noise = torch.FloatTensor(batch_size, self.image_size, self.image_size, 1, device=self.device).uniform_(0., 1.) #TODO: Fix to generalized case
 
         #Disabling Pytorch lightning's default optimizer
         self.automatic_optimization = False
@@ -68,28 +81,31 @@ class StylePoseGAN(pl.LightningModule):
 
 
         (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map, T_texture_map) = batch #x, y = batch, so x is  the tuple, and y is the triplet
+        
 
-        batch_size = I_s.shape[0]
         #PNet
         E_s = self.p_net(S_pose_map)
         E_t = self.p_net(T_pose_map)
-
+        
         #ANet
         z_s = self.a_net(S_texture_map)
         z_t = self.a_net(T_texture_map)
+        
 
 
-        input_noise = torch.FloatTensor(batch_size, self.image_size, self.image_size, 1).uniform_(0., 1.) #TODO: Fix to generalized case
-        I_dash_s = self.g_net.G(z_s, input_noise, E_s) #G(E_s, z_s)            
-        I_dash_s_to_t = self.g_net.G(z_s, input_noise, E_t)
+        #Create model 
+
+        #Repeat z num_layer times
+        I_dash_s = self.g_net.G(z_s.repeat(1, 5, 1), self.input_noise, E_s) #G(E_s, z_s)            
+        I_dash_s_to_t = self.g_net.G(z_s.repeat(1, 5, 1), self.input_noise, E_t)
         
         #Need to detach at the top level 
         rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) + \
-                      weight_vgg * get_perceptual_vgg_loss(I_dash_s, I_s) + \
+                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
                       weight_face * get_face_id_loss(I_dash_s, I_s)
                                 
         rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) + \
-                      weight_vgg * get_perceptual_vgg_loss(I_dash_s_to_t, I_t) + \
+                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
                       weight_face * get_face_id_loss(I_dash_s_to_t, I_t) 
 
         gan_loss_1_g = gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
@@ -169,28 +185,29 @@ class StylePoseGAN(pl.LightningModule):
         weight_gan = 1
 
         (I_s, S_pose_map, S_texture_map), (I_t,T_pose_map, T_texture_map) = batch #x, y = batch, so x is  the tuple, and y is the triplet 
+        print('Original Pose shape', S_pose_map.shape)
 
+        
         #PNet
         E_s = self.p_net(S_pose_map)
         E_t = self.p_net(T_pose_map)
-
+        print('E_s shape after PNet', E_s.shape)
         #ANet
         z_s = self.a_net(S_texture_map)
         z_t = self.a_net(T_texture_map)
+        print('z_s shape after ANet', z_s.shape)
+
+        #Repeating z num_layer times
+        I_dash_s = self.g_net.G(z_s.repeat(1, 5, 1), self.input_noise, E_s) #G(E_s, z_s)            
+        I_dash_s_to_t = self.g_net.G(z_s.repeat(1, 5, 1), self.input_noise, E_t)
 
 
-        input_noise = None #TODO: make it same as in the lucid rains repo
-        I_dash_s = self.g_net.G(z_s, input_noise, E_s) #G(E_s, z_s)            
-        I_dash_s_to_t = self.g_net.G(z_s, input_noise, E_t)
-
-
-        #Need to detach at the top level 
         rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) + \
-                      weight_vgg * get_perceptual_vgg_loss(I_dash_s, I_s) + \
+                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
                       weight_face * get_face_id_loss(I_dash_s, I_s)
                                 
         rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) + \
-                      weight_vgg * get_perceptual_vgg_loss(I_dash_s_to_t, I_t) + \
+                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
                       weight_face * get_face_id_loss(I_dash_s_to_t, I_t) 
 
         gan_loss_1_g = gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)

@@ -502,7 +502,7 @@ class GeneratorBlock(nn.Module):
         super().__init__()
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False) if upsample else None
 
-        self.to_style1 =  nn.Linear(latent_dim, input_channels) #TODO? change to 2048 input_channels
+        self.to_style1 =  nn.Linear(latent_dim, input_channels) 
         self.to_noise1 = nn.Linear(1, filters)
         self.conv1 = Conv2DMod(input_channels, filters, 3)
         
@@ -519,12 +519,16 @@ class GeneratorBlock(nn.Module):
         if exists(self.upsample):
             x = self.upsample(x)
             print("X Dim after upsampling " + str(x.size()))
-       
+
+        print("inoise size and device is", inoise.size(), inoise.device) 
+
         inoise = inoise[:, :x.shape[2], :x.shape[3], :]
-        noise1 = self.to_noise1(inoise).permute((0, 3, 2, 1))
+        
+        print("Noise 1 before permutation is: ", inoise.shape)
+        noise1 = self.to_noise1(inoise).permute((0, 3, 1, 2)) # was earlier ((0, 3, 2, 1))
         print("Noise1 shape is " + str(noise1.size()))
 
-        noise2 = self.to_noise2(inoise).permute((0, 3, 2, 1))
+        noise2 = self.to_noise2(inoise).permute((0, 3, 1, 2)) # was earlier ((0, 3, 2, 1))
 
         style1 = self.to_style1(istyle)
         x = self.conv1(x, style1)
@@ -584,18 +588,21 @@ class Generator(nn.Module):
         super().__init__()
         self.image_size = image_size
         self.latent_dim = latent_dim
-        self.num_layers = 4 #This will alwayus be 4 as discussed, may need to make this into a hyperparam? #int(log2(image_size) - 1))
 
-        #Changed 2 ** (i + 1) -> 2 ** (i + 2) to filters of 512, 256, 128, 64
-        filters = [network_capacity * (2 ** (i + 2)) for i in range(self.num_layers)][::-1]
+        #First block is now upsampling: so 1 be non-upsamling and the remaining 4 will be
+        self.num_layers = 5 #This will alwayus be 4 as discussed, may need to make this into a hyperparam? #int(log2(image_size) - 1))
 
+        #Does not apply anymore #Changed 2 ** (i + 1) -> 2 ** (i + 2) to filters of 512, 256, 128, 64
+        #Now filters = [512, 256, 128, 64, 32]
+        filters = [network_capacity * (2 ** (i + 1)) for i in range(self.num_layers)][::-1]
+
+
+        #fmap_max bounds the maximum size of the first filter
         set_fmap_max = partial(min, fmap_max)
         filters = list(map(set_fmap_max, filters))
         init_channels = filters[0]
         filters = [init_channels, *filters]
-
         in_out_pairs = zip(filters[:-1], filters[1:])
-
 
         # if no_const:
         #     self.to_initial_block = nn.ConvTranspose2d(latent_dim, init_channels, 4, 1, 0, bias=False)
@@ -625,6 +632,8 @@ class Generator(nn.Module):
             )
             
             self.blocks.append(block)
+        
+        print("No of Gen Blocks created: ", len(self.blocks))
 
     #Added s_input as an additional argument to forward
     def forward(self, z_inputs, input_noise, s_input):
@@ -647,14 +656,18 @@ class Generator(nn.Module):
         print("Initial Conv Dims is: " + str(self.initial_conv))
         x = self.initial_conv(x)
         print("X dim after convolution is: " + str(x.size()))
-
+        
+        count = 0
+        print("Zipped: ", len(z_inputs))
         for z_input, block, attn in zip(z_inputs, self.blocks, self.attns):
+            count+=1
             if exists(attn): 
                 print("X dim before attention" + str(x.size()))
                 x = attn(x)
                 print("X dim after attention" + str(x.size()))
             x, rgb = block(x, rgb, z_input, input_noise)
 
+        print(count)
         return rgb
 
 class Discriminator(nn.Module):
@@ -725,77 +738,77 @@ class Discriminator(nn.Module):
         print("X final output before squeezing is", x)
         return x.squeeze(), quantize_loss
 
-class StyleGAN2(nn.Module):
-    def __init__(self, image_size, latent_dim = 512, fmap_max = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, cl_reg = False, steps = 1, lr = 1e-4, ttur_mult = 2, fq_layers = [], fq_dict_size = 256, attn_layers = [], lr_mlp = 0.1, rank = 0):
-        super().__init__()
-        self.lr = lr
-        self.steps = steps
-        self.ema_updater = EMA(0.995)
+# class StyleGAN2(nn.Module): #We use this exact class definition with modifications as GNet.py
+#     def __init__(self, image_size, latent_dim = 512, fmap_max = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, cl_reg = False, steps = 1, lr = 1e-4, ttur_mult = 2, fq_layers = [], fq_dict_size = 256, attn_layers = [], lr_mlp = 0.1, rank = 0):
+#         super().__init__()
+#         self.lr = lr
+#         self.steps = steps
+#         self.ema_updater = EMA(0.995)
 
-        self.S = StyleVectorizer(latent_dim, style_depth, lr_mul = lr_mlp)
-        self.G = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers, fmap_max = fmap_max)
-        self.D = Discriminator(image_size, network_capacity, fq_layers = fq_layers, fq_dict_size = fq_dict_size, attn_layers = attn_layers, transparent = transparent, fmap_max = fmap_max)
+#         self.S = StyleVectorizer(latent_dim, style_depth, lr_mul = lr_mlp)
+#         self.G = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers, fmap_max = fmap_max)
+#         self.D = Discriminator(image_size, network_capacity, fq_layers = fq_layers, fq_dict_size = fq_dict_size, attn_layers = attn_layers, transparent = transparent, fmap_max = fmap_max)
 
-        self.SE = StyleVectorizer(latent_dim, style_depth, lr_mul = lr_mlp)
-        self.GE = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers)
+#         self.SE = StyleVectorizer(latent_dim, style_depth, lr_mul = lr_mlp)
+#         self.GE = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers)
 
-        self.D_cl = None
+#         self.D_cl = None
 
-        if cl_reg:
-            from contrastive_learner import ContrastiveLearner
-            # experimental contrastive loss discriminator regularization
-            assert not transparent, 'contrastive loss regularization does not work with transparent images yet'
-            self.D_cl = ContrastiveLearner(self.D, image_size, hidden_layer='flatten')
+#         if cl_reg:
+#             from contrastive_learner import ContrastiveLearner
+#             # experimental contrastive loss discriminator regularization
+#             assert not transparent, 'contrastive loss regularization does not work with transparent images yet'
+#             self.D_cl = ContrastiveLearner(self.D, image_size, hidden_layer='flatten')
 
-        # wrapper for augmenting all images going into the discriminator
-        self.D_aug = AugWrapper(self.D, image_size)
+#         # wrapper for augmenting all images going into the discriminator
+#         self.D_aug = AugWrapper(self.D, image_size)
 
-        # turn off grad for exponential moving averages
-        set_requires_grad(self.SE, False)
-        set_requires_grad(self.GE, False)
+#         # turn off grad for exponential moving averages
+#         set_requires_grad(self.SE, False)
+#         set_requires_grad(self.GE, False)
 
-        # init optimizers
-        generator_params = list(self.G.parameters()) + list(self.S.parameters())
-        self.G_opt = Adam(generator_params, lr = self.lr, betas=(0.5, 0.9))
-        self.D_opt = Adam(self.D.parameters(), lr = self.lr * ttur_mult, betas=(0.5, 0.9))
+#         # init optimizers
+#         generator_params = list(self.G.parameters()) + list(self.S.parameters())
+#         self.G_opt = Adam(generator_params, lr = self.lr, betas=(0.5, 0.9))
+#         self.D_opt = Adam(self.D.parameters(), lr = self.lr * ttur_mult, betas=(0.5, 0.9))
 
-        # init weights
-        self._init_weights()
-        self.reset_parameter_averaging()
+#         # init weights
+#         self._init_weights()
+#         self.reset_parameter_averaging()
 
-        self.cuda(rank)
+#         self.cuda(rank)
 
-        # startup apex mixed precision
-        self.fp16 = fp16
-        if fp16:
-            (self.S, self.G, self.D, self.SE, self.GE), (self.G_opt, self.D_opt) = amp.initialize([self.S, self.G, self.D, self.SE, self.GE], [self.G_opt, self.D_opt], opt_level='O1', num_losses=3)
+#         # startup apex mixed precision
+#         self.fp16 = fp16
+#         if fp16:
+#             (self.S, self.G, self.D, self.SE, self.GE), (self.G_opt, self.D_opt) = amp.initialize([self.S, self.G, self.D, self.SE, self.GE], [self.G_opt, self.D_opt], opt_level='O1', num_losses=3)
 
-    def _init_weights(self):
-        for m in self.modules():
-            if type(m) in {nn.Conv2d, nn.Linear}:
-                nn.init.kaiming_normal_(m.weight, a=0, mode='fan_in', nonlinearity='leaky_relu')
+#     def _init_weights(self):
+#         for m in self.modules():
+#             if type(m) in {nn.Conv2d, nn.Linear}:
+#                 nn.init.kaiming_normal_(m.weight, a=0, mode='fan_in', nonlinearity='leaky_relu')
 
-        for block in self.G.blocks:
-            nn.init.zeros_(block.to_noise1.weight)
-            nn.init.zeros_(block.to_noise2.weight)
-            nn.init.zeros_(block.to_noise1.bias)
-            nn.init.zeros_(block.to_noise2.bias)
+#         for block in self.G.blocks:
+#             nn.init.zeros_(block.to_noise1.weight)
+#             nn.init.zeros_(block.to_noise2.weight)
+#             nn.init.zeros_(block.to_noise1.bias)
+#             nn.init.zeros_(block.to_noise2.bias)
 
-    def EMA(self):
-        def update_moving_average(ma_model, current_model):
-            for current_params, ma_params in zip(current_model.parameters(), ma_model.parameters()):
-                old_weight, up_weight = ma_params.data, current_params.data
-                ma_params.data = self.ema_updater.update_average(old_weight, up_weight)
+#     def EMA(self):
+#         def update_moving_average(ma_model, current_model):
+#             for current_params, ma_params in zip(current_model.parameters(), ma_model.parameters()):
+#                 old_weight, up_weight = ma_params.data, current_params.data
+#                 ma_params.data = self.ema_updater.update_average(old_weight, up_weight)
 
-        update_moving_average(self.SE, self.S)
-        update_moving_average(self.GE, self.G)
+#         update_moving_average(self.SE, self.S)
+#         update_moving_average(self.GE, self.G)
 
-    def reset_parameter_averaging(self):
-        self.SE.load_state_dict(self.S.state_dict())
-        self.GE.load_state_dict(self.G.state_dict())
+#     def reset_parameter_averaging(self):
+#         self.SE.load_state_dict(self.S.state_dict())
+#         self.GE.load_state_dict(self.G.state_dict())
 
-    def forward(self, x):
-        return x
+#     def forward(self, x):
+#         return x
 
 class Trainer():
     def __init__(
