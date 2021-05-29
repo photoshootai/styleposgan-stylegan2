@@ -33,8 +33,8 @@ def get_l1_loss(I_gen, I_gt, reduction='mean'):
 
 def get_perceptual_vgg_loss(vgg_perceptual_model, I_gen, I_gt):
     
-    gen_tups = vgg_perceptual_model(I_gen)
-    gt_tups  = vgg_perceptual_model(I_gt)
+    gen_tups = [t.detach() for t in vgg_perceptual_model(I_gen)]
+    gt_tups  = [t.detach() for t in vgg_perceptual_model(I_gt)]
     vgg_loss = calcaluate_l_vgg(gen_tups, gt_tups)
     return vgg_loss
 

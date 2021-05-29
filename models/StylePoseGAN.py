@@ -146,21 +146,25 @@ class StylePoseGAN(pl.LightningModule):
         #This is the total loss that needs to be minimized. The only GAN loss here is -log(D(G(z)) times two for the two reconstruction losses
         l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g 
         
-       #Total Loss that needs to be maximized. The only GAN loss here is -[log(D(x)) + log(1-D(G(z)))] for the respective args
+        min_opt.zero_grad()
+        l_total_to_min.backward(retain_graph=True)
+        min_opt.step()
+        
+        #Total Loss that needs to be maximized. The only GAN loss here is -[log(D(x)) + log(1-D(G(z)))] for the respective args
         l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d + patch_loss
         
-        min_opt.zero_grad()
-        l_total_to_min.manual_backward()
-        min_opt.step()
+        # min_opt.zero_grad()
+        # l_total_to_min.backward(retain_graph=True)
+        # min_opt.step()
                     
         max_opt.zero_grad()
-        l_total_to_max.manual_backward()
+        l_total_to_max.backward()
         max_opt.step()
         
         # Calculate Moving Averages
         if apply_path_penalty and not np.isnan(avg_pl_length):
-                    self.pl_mean = self.pl_length_ma.update_average(self.pl_mean, avg_pl_length)
-                    self.track(self.pl_mean, 'PL')
+            self.pl_mean = self.pl_length_ma.update_average(self.pl_mean, avg_pl_length)
+            self.track(self.pl_mean, 'PL')
 
         if self.is_main and self.steps % 10 == 0 and self.steps > 20000:
             self.GAN.EMA()

@@ -122,10 +122,10 @@ class DeepFashionDataModule(pl.LightningDataModule):
     # print(len(self.train_data), len(self.val_data), len(self.test_data))
 
   def train_dataloader(self):
-    return DataLoader(self.train_data, self.batch_size, num_workers=4)  # TODO: Add workers
+    return DataLoader(self.train_data, self.batch_size, num_workers=6)  # TODO: Add workers
     
   def val_dataloader(self):
-    return DataLoader(self.val_data, self.batch_size, num_workers=4)
+    return DataLoader(self.val_data, self.batch_size, num_workers=6)
 
   def test_dataloader(self):
-    return DataLoader(self.test_data, self.batch_size, num_workers=4)
+    return DataLoader(self.test_data, self.batch_size, num_workers=6)

@@ -26,6 +26,8 @@ from datasets import DeepFashionDataModule
 
 from models.StylePoseGAN import StylePoseGAN
 
+import gc
+
 # # RayTune
 # from ray import tune
 # from ray.tune import CLIReporter
@@ -35,6 +37,7 @@ from models.StylePoseGAN import StylePoseGAN
 def main(args):
  
    #train_loader = DataLoader(dataset, batch_size=batch_size)
+    gc.collect()
     torch.cuda.empty_cache()
     #Logging
     logger = TensorBoardLogger('tb_logs', name='my_model')
