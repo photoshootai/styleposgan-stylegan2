@@ -47,7 +47,7 @@ def main(args):
     pose_map_path="./data/TrainingData/PoseMaps"
     texture_map_path="./data/TrainingData/TextureMaps"
     
-    datamodule = DeepFashionDataModule(source_image_path, pose_map_path, texture_map_path, batch_size=args.batch_size)
+    datamodule = DeepFashionDataModule(source_image_path, pose_map_path, texture_map_path, batch_size=args.batch_size, image_size=(args.image_size, args.image_size))
     model = StylePoseGAN(args.image_size, batch_size=args.batch_size)
     
     #trainer.fit(model, train_loader)
