@@ -149,7 +149,7 @@ class StylePoseGAN(pl.LightningModule):
         # min_opt.step()
                     
         max_opt.zero_grad()
-        self.manual_backward(l_total_to_max)
+        self.manual_backward(l_total_to_max, retain_graph=True)
         max_opt.step()
 
 
