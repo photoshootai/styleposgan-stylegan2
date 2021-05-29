@@ -9,8 +9,7 @@ from torch.utils.data import DataLoader, random_split
 import pytorch_lightning as pl
 
 
-
-from models import ANet, PNet, GNet
+from models import ANet, PNet, GNet, DPatch
 
 #import helpers
 # from stylegan2 import exists, null_context, combine_contexts, default, cast_list, is_empty, raise_if_nan
@@ -32,11 +31,12 @@ class StylePoseGAN(pl.LightningModule):
         self.p_net = PNet()
         self.g_net = GNet(image_size=image_size, latent_dim=latent_dim ) #Contains g_net.G, g_net.D, g_net.D_aug, g_net.S
 
+        
 
         #Loss calculation models
         self.vgg16_perceptual_model = VGG16Perceptual(requires_grad=False)
-        self.d_patch = None #Implement D_Patch
-
+        self.d_patch = DPatch() # Needs to be on same device as data!
+        
         self.d_lr = d_lr
         self.g_lr = g_lr
         self.image_size = image_size
