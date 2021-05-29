@@ -706,7 +706,7 @@ class Discriminator(nn.Module):
         self.quantize_blocks = nn.ModuleList(quantize_blocks)
 
         chan_last = filters[-1]
-        latent_dim = chan_last #2 * 2 * chan_last; Changed this because output into logits is always 512
+        latent_dim = 2*2*chan_last
 
         self.final_conv = nn.Conv2d(chan_last, chan_last, 3, padding=1)
         self.flatten = Flatten()
@@ -736,7 +736,7 @@ class Discriminator(nn.Module):
         x = self.to_logit(x)
 
         print("X final output before squeezing is", x)
-        return x.squeeze(), quantize_loss
+        return x, quantize_loss #Earlier was squeezed, we changed to x.squeeze(), quantize_loss
 
 # class StyleGAN2(nn.Module): #We use this exact class definition with modifications as GNet.py
 #     def __init__(self, image_size, latent_dim = 512, fmap_max = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, cl_reg = False, steps = 1, lr = 1e-4, ttur_mult = 2, fq_layers = [], fq_dict_size = 256, attn_layers = [], lr_mlp = 0.1, rank = 0):

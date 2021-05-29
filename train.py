@@ -71,9 +71,9 @@ if __name__ == "__main__":
 
     #Trainer Args
     parser.add_argument('--data_path', type=str, default="./data/deepfashion")
-    parser.add_argument('--batch_size', type=int, default=8)
+    parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--gpus', default=1)
-    parser.add_argument('--image_size', type=int, default=512)
+    parser.add_argument('--image_size', type=int, default=256)
     parser.add_argument('--tpu_cores', type=int, default=None)
     parser.add_argument('--precision', type=int, default=32 )
     parser.add_argument('--accumulate_grad_batches', type=int, default=32 )

@@ -1,3 +1,4 @@
+from losses.loss import get_patch_loss
 import os
 import torch
 import torch
@@ -7,9 +8,10 @@ from torchvision import transforms
 from torchvision.datasets import MNIST
 from torch.utils.data import DataLoader, random_split
 import pytorch_lightning as pl
+from facenet_pytorch import MTCNN, InceptionResnetV1
 
+from models import ANet, PNet, GNet
 
-from models import ANet, PNet, GNet, DPatch
 
 #import helpers
 # from stylegan2 import exists, null_context, combine_contexts, default, cast_list, is_empty, raise_if_nan
@@ -21,11 +23,11 @@ from stylegan2 import *
 
 #Import losses
 
-from losses import gan_g_loss, gan_d_loss, get_face_id_loss, get_l1_loss, get_perceptual_vgg_loss, VGG16Perceptual
+from losses import gan_g_loss, gan_d_loss, get_face_id_loss, get_l1_loss, get_perceptual_vgg_loss, VGG16Perceptual, DPatch
 
 class StylePoseGAN(pl.LightningModule):
 
-    def __init__(self, image_size, batch_size, g_lr=2e-3, d_lr=2e-3, ttur_mult=2, latent_dim=2048, network_capacity=16, attn_layers=[1, 2, 3, 4]):
+    def __init__(self, image_size, batch_size, g_lr=2e-3, d_lr=2e-3, ttur_mult=2, latent_dim=2048, network_capacity=16, attn_layers=[1, 2, 3, 4], mtcnn_crop_size=160):
         super().__init__()
         self.a_net = ANet()
         self.p_net = PNet()
@@ -36,22 +38,27 @@ class StylePoseGAN(pl.LightningModule):
         #Loss calculation models
         self.vgg16_perceptual_model = VGG16Perceptual(requires_grad=False)
         self.d_patch = DPatch() # Needs to be on same device as data!
-        
+
+        self.mtcnn = MTCNN(image_size=mtcnn_crop_size, select_largest=True)
+        self.resnet = InceptionResnetV1(pretrained='vggface2').eval()
+
         self.d_lr = d_lr
         self.g_lr = g_lr
         self.image_size = image_size
+        self.mtcnn_crop_size = mtcnn_crop_size
 
 
-
-
-        print("StylePoseGAN Device", self.device)
 
         self.register_buffer("input_noise", torch.randn(batch_size, self.image_size, self.image_size, 1))
+
         # self.input_noise = , device= self.device)
         # self.input_noise = torch.FloatTensor(batch_size, self.image_size, self.image_size, 1, device=self.device).uniform_(0., 1.) #TODO: Fix to generalized case
 
         #Disabling Pytorch lightning's default optimizer
         self.automatic_optimization = False
+
+    def set_mtcnn_device(self, device):
+        self.mtcnn.set_device(device)
 
     def forward(self, pose_map, texture_map):
         # in lightning, forward defines the prediction/inference actions
@@ -64,6 +71,8 @@ class StylePoseGAN(pl.LightningModule):
 
     # training_step defined the train loop. # It is independent of forward
     def training_step(self, batch, batch_idx):
+        print("DEVICE IN TRAINING STEP IS: ", self.device) #Assuming that by the time training_step is called, self.device points to the correct device
+        self.mtcnn.set_device(self.device)
         apply_path_penalty=False
         avg_pl_length = 0
 
@@ -72,6 +81,7 @@ class StylePoseGAN(pl.LightningModule):
         weight_vgg = 1
         weight_face = 1
         weight_gan = 1
+        weight_patch = 1
 
         #Get optimizers
         min_opt, max_opt = self.optimizers()
@@ -102,11 +112,11 @@ class StylePoseGAN(pl.LightningModule):
         #Need to detach at the top level 
         rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) + \
                       weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
-                      weight_face * get_face_id_loss(I_dash_s, I_s)
+                      weight_face * get_face_id_loss(I_dash_s, I_s, self.mtcnn, self.resnet, crop_size=self.mtcnn_crop_size)
                                 
         rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) + \
                       weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
-                      weight_face * get_face_id_loss(I_dash_s_to_t, I_t) 
+                      weight_face * get_face_id_loss(I_dash_s_to_t, I_t, self.mtcnn, self.resnet, crop_size=self.mtcnn_crop_size) 
 
         gan_loss_1_g = gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
         gan_loss_2_g = gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
@@ -114,6 +124,7 @@ class StylePoseGAN(pl.LightningModule):
         gan_loss_1_d = gan_d_loss(I_dash_s.clone().detach(), I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
         gan_loss_2_d = gan_d_loss(I_dash_s_to_t.clone().detach(), I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
 
+        patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
         """
         L_GAN has two parts: 
         1. the D_loss=log(D(x)) + log(1-D(G(z))) which needs to maximized
@@ -136,7 +147,7 @@ class StylePoseGAN(pl.LightningModule):
         l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g 
         
        #Total Loss that needs to be maximized. The only GAN loss here is -[log(D(x)) + log(1-D(G(z)))] for the respective args
-        l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d
+        l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d + patch_loss
         
         min_opt.zero_grad()
         l_total_to_min.manual_backward()
@@ -178,11 +189,14 @@ class StylePoseGAN(pl.LightningModule):
 
     #TODO check this
     def validation_step(self, batch, batch_idx):
+        print("DEVICE IN TRAINING STEP IS: ", self.device) #Assuming that by the time training_step is called, self.device points to the correct device
+        self.mtcnn.set_device(self.device)
 
         weight_l1 =1
         weight_vgg = 1
         weight_face = 1
         weight_gan = 1
+        weight_patch = 1
 
         (I_s, S_pose_map, S_texture_map), (I_t,T_pose_map, T_texture_map) = batch #x, y = batch, so x is  the tuple, and y is the triplet 
         print('Original Pose shape', S_pose_map.shape)
@@ -204,11 +218,11 @@ class StylePoseGAN(pl.LightningModule):
 
         rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) + \
                       weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
-                      weight_face * get_face_id_loss(I_dash_s, I_s)
+                      weight_face * get_face_id_loss(I_dash_s, I_s, self.mtcnn, self.resnet, crop_size=self.mtcnn_crop_size)
                                 
         rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) + \
                       weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
-                      weight_face * get_face_id_loss(I_dash_s_to_t, I_t) 
+                      weight_face * get_face_id_loss(I_dash_s_to_t, I_t, self.mtcnn, self.resnet, crop_size=self.mtcnn_crop_size) 
 
         gan_loss_1_g = gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
         gan_loss_2_g = gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
@@ -216,6 +230,7 @@ class StylePoseGAN(pl.LightningModule):
         gan_loss_1_d = gan_d_loss(I_dash_s.clone().detach(), I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
         gan_loss_2_d = gan_d_loss(I_dash_s_to_t.clone().detach(), I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
 
+        patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
         """
         L_GAN has two parts: 
         1. the D_loss=log(D(x)) + log(1-D(G(z))) which needs to maximized
@@ -238,7 +253,7 @@ class StylePoseGAN(pl.LightningModule):
         l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g 
         
        #Total Loss that needs to be maximized. The only GAN loss here is -[log(D(x)) + log(1-D(G(z)))] for the respective args
-        l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d
+        l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d + patch_loss
         
         return  {'l_total_to_min': l_total_to_min, 'l_total_to_max': l_total_to_max}
 

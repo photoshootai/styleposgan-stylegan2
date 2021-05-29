@@ -48,13 +48,15 @@ def calcaluate_l_vgg(gen_tuples, gt_tuples):
 
 #Eq 6
 #TODO
-def get_face_id_loss(generated: torch.Tensor, real: torch.Tensor, device: str='', crop_size: int=160) ->  torch.Tensor:
+def get_face_id_loss(generated: torch.Tensor, real: torch.Tensor,
+                     mtcnn: nn.Module, resnet: nn.Module, crop_size: int=160) -> torch.Tensor:
     """
     Arguments:
         generated [torch.Tensor (batch, C, H, W)]
         real [torch.Tensor (batch, C, H, W)]
-        device [opt str='']: torch device to use, defaults to device of first arg
-        crop_size [opt int=160]: preferred size of cropped image to analyze
+        mtcnn [nn.Module]: torch device to use, defaults to device of first arg
+        resnet [nn.Module]: preferred size of cropped image to analyze
+        crop_size [opt int=160]: the cropped size of mtcnn output
 
     Returns:
         loss: [torch.Tensor (0)]: rank 0 tensor representing a scalar loss value
@@ -63,9 +65,10 @@ def get_face_id_loss(generated: torch.Tensor, real: torch.Tensor, device: str=''
         None     
     """
     # MTCNN uses deprecated features!
+    np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)
+
     is_batched = len(real.shape) == 4
-    if not device:
-        device = generated.device 
+
     if is_batched:
         perm = (0, 2, 3, 1)
     else:
@@ -74,13 +77,8 @@ def get_face_id_loss(generated: torch.Tensor, real: torch.Tensor, device: str=''
     is_valid_face = lambda i, c, p: c[i] is not None and p[i] > 0.95 
     build_face_mask = lambda c, p: [i for i in range(len(c)) if is_valid_face(i, c, p)]
 
-    np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)
-
-    mtcnn = MTCNN(image_size=crop_size, select_largest=True, device=device)
-    resnet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
-
-    real_crops, real_probs = mtcnn(real.permute(*perm).cpu(), return_prob=True)
-    gen_crops = mtcnn(generated.permute(*perm).cpu())
+    real_crops, real_probs = mtcnn(real.permute(*perm), return_prob=True)
+    gen_crops = mtcnn(generated.permute(*perm))
 
     if not is_batched:
         real_crops = [real_crops]
@@ -93,17 +91,17 @@ def get_face_id_loss(generated: torch.Tensor, real: torch.Tensor, device: str=''
     # print(mask)
 
     if not has_face_real:
-        return torch.tensor(0.0, device=device)
+        return torch.tensor(0.0) #, device=device)
     # print(len(has_face_real), len(should_have_face_gen))
 
-    real_crops_with_face = torch.stack(has_face_real).to(device)
+    real_crops_with_face = torch.stack(has_face_real)#.to(device)
     real_embeddings = resnet(real_crops_with_face).detach()
     # print(real_crops_with_face.shape)
     # print(real_embeddings.shape)
 
     fill_none_in_gen = [(c if c is not None else torch.zeros((3, crop_size, crop_size))) for c in should_have_face_gen]
     # print([x.shape for x in fill_none_in_gen])
-    gen_crops_with_face = torch.stack(fill_none_in_gen).to(device)
+    gen_crops_with_face = torch.stack(fill_none_in_gen)#.to(device)
     gen_embeddings = resnet(gen_crops_with_face).detach()
 
     # show_tensor_list = lambda t: torch.hstack([(c.permute(1, 2, 0) if c is not None else torch.zeros((crop_size, crop_size, 3))) for c in t]).cpu().numpy() * 255
@@ -130,7 +128,7 @@ def gan_d_loss(generated, real, G, D, D_aug, detach=True,  args={'device': 'cuda
 
     #Training Discriminator
     G_requires_reals = False
-    criterion = torch.nn.BCELoss()
+    criterion = nn.BCEWithLogitsLoss()
 
     fake_output, fake_q_loss = D_aug(generated, detach = detach)
     real_output, real_q_loss = D_aug(real)
@@ -155,11 +153,13 @@ def gan_d_loss(generated, real, G, D, D_aug, detach=True,  args={'device': 'cuda
 
 
 def gan_g_loss(generated, real, G, D, D_aug, args={'device': 'cuda'}):
-    criterion = nn.BCELoss()
+    criterion = nn.BCEWithLogitsLoss()
     fake_output, _ = D_aug(generated)
 
     batch_size = generated.shape[0]
     real_label = torch.ones((batch_size, 1), device=args['device'])
+    print("real_label", real_label)
+    print("fake_output", fake_output)
     g_loss = criterion(fake_output, real_label) #-1 * log(D(G(z))
 
     return g_loss
