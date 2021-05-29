@@ -18,12 +18,12 @@ def resize_to_minimum_size(min_size, image):
 
 
 class DeepFashionDataset(Dataset):
-  def __init__(self, source_image_path, pose_map_path, texture_map_path, image_size, train=False, batch_size=32):
+  def __init__(self, source_image_path, pose_map_path, texture_map_path, image_size=(512, 512), train=False, batch_size=32):
     
 
     self.img_transform = transforms.Compose([
-            transforms.Lambda(partial(resize_to_minimum_size, image_size)),
-            transforms.Resize(image_size),
+            # transforms.Lambda(partial(resize_to_minimum_size, image_size)),
+            transforms.Resize((1024, 512)),
             #RandomApply(aug_prob, transforms.RandomResizedCrop(image_size, scale=(0.5, 1.0), ratio=(0.98, 1.02)), transforms.CenterCrop(image_size)),
             transforms.ToTensor(),
             #transforms.Lambda(expand_greyscale(transparent))
@@ -97,9 +97,10 @@ class DeepFashionDataset(Dataset):
     target_texture = Image.open(full_texture_path2)
 
     #put them together
+    print('source_pose size pre-transform', source_pose.size)
     source_datapoint = (self.img_transform(source_img), self.img_transform(source_pose), self.texture_transform(source_texture))
     target_datapoint = (self.img_transform(target_img), self.img_transform(target_pose), self.texture_transform(target_texture))
-
+    print('source_pose size post-transform', source_datapoint[1].shape)
     return source_datapoint, target_datapoint
 
 class DeepFashionDataModule(pl.LightningDataModule):
@@ -120,10 +121,10 @@ class DeepFashionDataModule(pl.LightningDataModule):
     print(len(self.train_data), len(self.val_data), len(self.test_data))
 
   def train_dataloader(self):
-    return DataLoader(self.train_data, self.batch_size)  # TODO: Add workers
+    return DataLoader(self.train_data, self.batch_size, num_workers=4)  # TODO: Add workers
     
   def val_dataloader(self):
-    return DataLoader(self.val_data, self.batch_size)
+    return DataLoader(self.val_data, self.batch_size, num_workers=4)
 
   def test_dataloader(self):
-    return DataLoader(self.test_data, self.batch_size)
+    return DataLoader(self.test_data, self.batch_size, num_workers=4)

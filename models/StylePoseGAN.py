@@ -81,15 +81,16 @@ class StylePoseGAN(pl.LightningModule):
 
 
         (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map, T_texture_map) = batch #x, y = batch, so x is  the tuple, and y is the triplet
-
+        
 
         #PNet
         E_s = self.p_net(S_pose_map)
         E_t = self.p_net(T_pose_map)
-
+        
         #ANet
         z_s = self.a_net(S_texture_map)
         z_t = self.a_net(T_texture_map)
+        
 
 
         #Create model 
@@ -184,15 +185,17 @@ class StylePoseGAN(pl.LightningModule):
         weight_gan = 1
 
         (I_s, S_pose_map, S_texture_map), (I_t,T_pose_map, T_texture_map) = batch #x, y = batch, so x is  the tuple, and y is the triplet 
+        print('Original Pose shape', S_pose_map.shape)
 
         
         #PNet
         E_s = self.p_net(S_pose_map)
         E_t = self.p_net(T_pose_map)
-
+        print('E_s shape after PNet', E_s.shape)
         #ANet
         z_s = self.a_net(S_texture_map)
         z_t = self.a_net(T_texture_map)
+        print('z_s shape after ANet', z_s.shape)
 
         #Repeating z num_layer times
         I_dash_s = self.g_net.G(z_s.repeat(1, 5, 1), self.input_noise, E_s) #G(E_s, z_s)            
