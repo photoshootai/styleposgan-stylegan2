@@ -27,7 +27,7 @@ class ANet(nn.Module):
         self.res_block4 = ResidualBlock(in_chan=256,out_chan=512)
         self.last_block = get_anet_final_block() #just the Conv2d parts
         self.linear = nn.Linear(1024,2048)
-
+        print("test")
     def forward(self, x):
         '''
         Function for completing a forward pass of the ANet: Given a texture map tensor, 
