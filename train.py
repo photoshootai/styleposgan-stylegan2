@@ -52,7 +52,7 @@ def main(args):
     pose_map_path="./data/TrainingData/PoseMaps"
     texture_map_path="./data/TrainingData/TextureMaps"
     
-    datamodule = DeepFashionDataModule(source_image_path, pose_map_path, texture_map_path, batch_size=args.batch_size, image_size=(args.image_size, args.image_size))
+    datamodule = DeepFashionDataModule(source_image_path, pose_map_path, texture_map_path, batch_size=args.batch_size, image_size=(args.image_size, args.image_size), num_workers=args.num_workers)
     model = StylePoseGAN(args.image_size, batch_size=args.batch_size)
     
     #trainer.fit(model, train_loader)
@@ -76,7 +76,8 @@ if __name__ == "__main__":
 
     #Trainer Args
     parser.add_argument('--data_path', type=str, default="./data/deepfashion")
-    parser.add_argument('--batch_size', type=int, default=1)
+    parser.add_argument('--num_workers', type=int, default=2)
+    parser.add_argument('--batch_size', type=int, default=2)
     parser.add_argument('--gpus', default=-1)
     parser.add_argument('--image_size', type=int, default=256)
     parser.add_argument('--tpu_cores', type=int, default=None)
@@ -84,6 +85,7 @@ if __name__ == "__main__":
     parser.add_argument('--accumulate_grad_batches', type=int, default=32 )
     parser.add_argument('--top_k_training', type=bool, default=False)
     parser.add_argument('--deterministic', type=bool, default=True)
+
 
     
 

@@ -216,13 +216,6 @@ class StylePoseGAN(pl.LightningModule):
         self.log_dict({'generation_loss': l_total_to_min, 'disc_loss': l_total_to_max}, prog_bar=True)
         return  {'l_total_to_min': l_total_to_min, 'l_total_to_max': l_total_to_max, 'z_s': z_s, 'I_dash_s_to_t': I_dash_s_to_t}
 
-
-    #You can customize any part of training (such as the backward pass) by overriding any of the 20+ hooks found in Available Callback hooks
-    # def backward(self, loss, optimizer, optimizer_idx):
-    #     loss.backward()
-    # def training_step_end(self, losses):
-    #     return
-
     def training_step_end(self, *losses, **kwargs):
         # args = ({l_min, l_max, z_s, I_dash_s_to_t}, ...)
         # do we need to combine and backward in here?

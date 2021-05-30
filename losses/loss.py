@@ -64,10 +64,11 @@ def get_face_id_loss(generated: torch.Tensor, real: torch.Tensor,
     Side Effects:
         None     
     """
+
     # MTCNN uses deprecated features!
     np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)
 
-    is_batched = len(real.shape) == 4
+    is_batched = len(real.shape) == 4 #Becayse if its batched then real will have 4 dimentions with 1 for batch
 
     if is_batched:
         perm = (0, 2, 3, 1)
@@ -77,6 +78,8 @@ def get_face_id_loss(generated: torch.Tensor, real: torch.Tensor,
     is_valid_face = lambda i, c, p: c[i] is not None and p[i] > 0.95 
     build_face_mask = lambda c, p: [i for i in range(len(c)) if is_valid_face(i, c, p)]
 
+    print("Permute is", perm)
+    print("Generated in for MTCNN is", generated.permute(*perm).size())
     real_crops, real_probs = mtcnn(real.permute(*perm), return_prob=True)
     gen_crops = mtcnn(generated.permute(*perm))
 
