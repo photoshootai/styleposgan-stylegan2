@@ -1,3 +1,4 @@
+from losses.FaceIDLoss import FaceIDLoss
 from losses.loss import get_patch_loss
 import os
 import torch
@@ -8,7 +9,7 @@ from torchvision import transforms
 from torchvision.datasets import MNIST
 from torch.utils.data import DataLoader, random_split
 import pytorch_lightning as pl
-from facenet_pytorch import MTCNN, InceptionResnetV1
+
 
 from models import ANet, PNet, GNet
 
@@ -23,7 +24,7 @@ from stylegan2 import *
 
 #Import losses
 
-from losses import gan_g_loss, gan_d_loss, get_face_id_loss, get_l1_loss, get_perceptual_vgg_loss, VGG16Perceptual, DPatch
+from losses import gan_g_loss, gan_d_loss, get_l1_loss, get_perceptual_vgg_loss, VGG16Perceptual, DPatch
 
 class StylePoseGAN(pl.LightningModule):
 
@@ -36,12 +37,11 @@ class StylePoseGAN(pl.LightningModule):
 
         print('CUDA rank', self.global_rank)  # should be 0 on main, > 0 on other gpus/tpus/cpus
 
-        #Loss calculation models
-        self.vgg16_perceptual_model = VGG16Perceptual(requires_grad=False)
+       
+
+
         self.d_patch = DPatch() # Needs to be on same device as data!
 
-        self.mtcnn = MTCNN(image_size=mtcnn_crop_size, select_largest=True)
-        self.resnet = InceptionResnetV1(pretrained='vggface2').eval()
 
         self.d_lr = d_lr
         self.g_lr = g_lr
@@ -59,10 +59,13 @@ class StylePoseGAN(pl.LightningModule):
         # self.input_noise = torch.FloatTensor(batch_size, self.image_size, self.image_size, 1, device=self.device).uniform_(0., 1.) #TODO: Fix to generalized case
 
         #Disabling Pytorch lightning's default optimizer
-        self.automatic_optimization = False
 
-    def set_mtcnn_device(self, device):
-        self.mtcnn.set_device(device)
+        #Loss calculation models
+        self.vgg16_perceptual_model = VGG16Perceptual(requires_grad=False)
+        self.face_id_loss= FaceIDLoss(mtcnn_crop_size, requires_grad = False)
+        self.automatic_optimization = False
+        
+
 
     def forward(self, pose_map, texture_map):
         # in lightning, forward defines the prediction/inference actions
@@ -76,7 +79,6 @@ class StylePoseGAN(pl.LightningModule):
         """
         Separate repeated code from validation and training steps into different function for easier update/debugging
         """
-        self.mtcnn.set_device(self.device)
 
         # Weights
         weight_l1 =1
@@ -104,11 +106,11 @@ class StylePoseGAN(pl.LightningModule):
         #Need to detach at the top level 
         rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) + \
                       weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
-                      weight_face * get_face_id_loss(I_dash_s, I_s, self.mtcnn, self.resnet, crop_size=self.mtcnn_crop_size)
+                      weight_face * self.face_id_loss(I_dash_s, I_s, crop_size=self.mtcnn_crop_size)
                                 
         rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) + \
                       weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
-                      weight_face * get_face_id_loss(I_dash_s_to_t, I_t, self.mtcnn, self.resnet, crop_size=self.mtcnn_crop_size) 
+                      weight_face * self.face_id_loss(I_dash_s_to_t, I_t, crop_size=self.mtcnn_crop_size) 
 
 
         gan_loss_1_d = weight_gan * gan_d_loss(I_dash_s.detach(), I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
