@@ -1,6 +1,6 @@
 import torch
 import os, random
-import cv2
+#import cv2
 
 import numpy as np
 import pytorch_lightning as pl
