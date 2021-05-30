@@ -111,15 +111,6 @@ def get_face_id_loss(generated: torch.Tensor, real: torch.Tensor,
     face_loss = get_l1_loss(gen_embeddings, real_embeddings, reduction='mean')
     return face_loss
 
-# def get_gan_loss(generated, real,  args):
-#     d_x = D_aug(real)
-#     d_g_z = D_aug(generated)
-
-
-
-
-#     gan_loss = gan_d_loss() + gan_g_loss()
-    #return torch.log(d_x) + torch.log(1 - d_g_z)
 
 """
 Don't know if we need these two below, but this basically define G and D's losses using BCE seperately, following the usual Pytorch tutorial
@@ -158,8 +149,8 @@ def gan_g_loss(generated, real, G, D, D_aug, args={'device': 'cuda'}):
 
     batch_size = generated.shape[0]
     real_label = torch.ones((batch_size, 1), device=args['device'])
-    print("real_label", real_label)
-    print("fake_output", fake_output)
+    # print("real_label", real_label)
+    # print("fake_output", fake_output)
     g_loss = criterion(fake_output, real_label) #-1 * log(D(G(z))
 
     return g_loss
