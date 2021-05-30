@@ -23,7 +23,7 @@ class DeepFashionDataset(Dataset):
 
     self.img_transform = transforms.Compose([
             # transforms.Lambda(partial(resize_to_minimum_size, image_size)),
-            transforms.Resize((1024, 512)),
+            transforms.Resize(image_size), #TODO: Need to make this take image_size from 
             #RandomApply(aug_prob, transforms.RandomResizedCrop(image_size, scale=(0.5, 1.0), ratio=(0.98, 1.02)), transforms.CenterCrop(image_size)),
             transforms.ToTensor(),
             #transforms.Lambda(expand_greyscale(transparent))
@@ -61,8 +61,8 @@ class DeepFashionDataset(Dataset):
     self.data = list(zip(self.data_id[:mid], self.data_id[mid:]))
     self.data += [(y, x) for x, y in self.data]
     
-    print('No dup pairs:', all(x[0] != x[1] for x in self.data))
-    print('no dup tups:', (sum(1 for x in self.data if (self.data.count(x) > 1)) == 0))
+    # print('No dup pairs:', all(x[0] != x[1] for x in self.data))
+    # print('no dup tups:', (sum(1 for x in self.data if (self.data.count(x) > 1)) == 0))
 
     train_prop = int(len(self.data) * 0.99)
     if self.train:
@@ -97,34 +97,35 @@ class DeepFashionDataset(Dataset):
     target_texture = Image.open(full_texture_path2)
 
     #put them together
-    print('source_pose size pre-transform', source_pose.size)
+    # print('source_pose size pre-transform', source_pose.size)
     source_datapoint = (self.img_transform(source_img), self.img_transform(source_pose), self.texture_transform(source_texture))
     target_datapoint = (self.img_transform(target_img), self.img_transform(target_pose), self.texture_transform(target_texture))
-    print('source_pose size post-transform', source_datapoint[1].shape)
+    # print('source_pose size post-transform', source_datapoint[1].shape)
     return source_datapoint, target_datapoint
 
 class DeepFashionDataModule(pl.LightningDataModule):
-  def __init__(self, source_image_path, pose_map_path, texture_map_path, batch_size=32):
+  def __init__(self, source_image_path, pose_map_path, texture_map_path, batch_size=32, image_size=(512, 512)):
     super().__init__()
     self.img_path = source_image_path
     self.pose_path = pose_map_path
     self.texture_path = texture_map_path
     self.batch_size = batch_size
+    self.image_size = image_size
 
   def setup(self, stage="fit"):
-    self.train_data = DeepFashionDataset(self.img_path, self.pose_path, self.texture_path, True, self.batch_size)
-    self.test_data = DeepFashionDataset(self.img_path, self.pose_path, self.texture_path, False, self.batch_size)
+    self.train_data = DeepFashionDataset(self.img_path, self.pose_path, self.texture_path, image_size=self.image_size, train=True, batch_size=self.batch_size)
+    self.test_data = DeepFashionDataset(self.img_path, self.pose_path, self.texture_path, image_size=self.image_size, train=False, batch_size=self.batch_size)
     
     training_proportion = int(len(self.train_data) * 0.95)
     self.train_data, self.val_data = random_split(self.train_data, [training_proportion, len(self.train_data)-training_proportion])
     
-    print(len(self.train_data), len(self.val_data), len(self.test_data))
+    # print(len(self.train_data), len(self.val_data), len(self.test_data))
 
   def train_dataloader(self):
-    return DataLoader(self.train_data, self.batch_size, num_workers=4)  # TODO: Add workers
+    return DataLoader(self.train_data, self.batch_size, num_workers=6)  # TODO: Add workers
     
   def val_dataloader(self):
-    return DataLoader(self.val_data, self.batch_size, num_workers=4)
+    return DataLoader(self.val_data, self.batch_size, num_workers=6)
 
   def test_dataloader(self):
-    return DataLoader(self.test_data, self.batch_size, num_workers=4)
+    return DataLoader(self.test_data, self.batch_size, num_workers=6)

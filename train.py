@@ -26,6 +26,8 @@ from datasets import DeepFashionDataModule
 
 from models.StylePoseGAN import StylePoseGAN
 
+import gc
+
 # # RayTune
 # from ray import tune
 # from ray.tune import CLIReporter
@@ -35,6 +37,7 @@ from models.StylePoseGAN import StylePoseGAN
 def main(args):
  
    #train_loader = DataLoader(dataset, batch_size=batch_size)
+    gc.collect()
     torch.cuda.empty_cache()
     #Logging
     logger = TensorBoardLogger('tb_logs', name='my_model')
@@ -47,7 +50,7 @@ def main(args):
     pose_map_path="./data/TrainingData/PoseMaps"
     texture_map_path="./data/TrainingData/TextureMaps"
     
-    datamodule = DeepFashionDataModule(source_image_path, pose_map_path, texture_map_path, batch_size=args.batch_size)
+    datamodule = DeepFashionDataModule(source_image_path, pose_map_path, texture_map_path, batch_size=args.batch_size, image_size=(args.image_size, args.image_size))
     model = StylePoseGAN(args.image_size, batch_size=args.batch_size)
     
     #trainer.fit(model, train_loader)
@@ -71,9 +74,9 @@ if __name__ == "__main__":
 
     #Trainer Args
     parser.add_argument('--data_path', type=str, default="./data/deepfashion")
-    parser.add_argument('--batch_size', type=int, default=8)
+    parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--gpus', default=1)
-    parser.add_argument('--image_size', type=int, default=512)
+    parser.add_argument('--image_size', type=int, default=256)
     parser.add_argument('--tpu_cores', type=int, default=None)
     parser.add_argument('--precision', type=int, default=32 )
     parser.add_argument('--accumulate_grad_batches', type=int, default=32 )
