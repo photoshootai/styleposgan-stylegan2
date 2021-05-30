@@ -52,6 +52,15 @@ Thumbs.db
 .vscode/
 
 
+#Python Specific
+__pycache__/
+*$py.class
+
+.installed.cfg
+lib
+lib64
+
+#Project Specific
 data/
 
 tb_logs/
