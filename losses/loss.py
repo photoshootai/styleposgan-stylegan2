@@ -33,8 +33,8 @@ def get_l1_loss(I_gen, I_gt, reduction='mean'):
 
 def get_perceptual_vgg_loss(vgg_perceptual_model, I_gen, I_gt):
     
-    gen_tups = [t.detach() for t in vgg_perceptual_model(I_gen)]
-    gt_tups  = [t.detach() for t in vgg_perceptual_model(I_gt)]
+    gen_tups = vgg_perceptual_model(I_gen)
+    gt_tups  = vgg_perceptual_model(I_gt)
     vgg_loss = calcaluate_l_vgg(gen_tups, gt_tups)
     return vgg_loss
 
@@ -64,10 +64,11 @@ def get_face_id_loss(generated: torch.Tensor, real: torch.Tensor,
     Side Effects:
         None     
     """
+
     # MTCNN uses deprecated features!
     np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)
 
-    is_batched = len(real.shape) == 4
+    is_batched = len(real.shape) == 4 #Becayse if its batched then real will have 4 dimentions with 1 for batch
 
     if is_batched:
         perm = (0, 2, 3, 1)
@@ -77,6 +78,8 @@ def get_face_id_loss(generated: torch.Tensor, real: torch.Tensor,
     is_valid_face = lambda i, c, p: c[i] is not None and p[i] > 0.95 
     build_face_mask = lambda c, p: [i for i in range(len(c)) if is_valid_face(i, c, p)]
 
+    print("Permute is", perm)
+    print("Generated in for MTCNN is", generated.permute(*perm).size())
     real_crops, real_probs = mtcnn(real.permute(*perm), return_prob=True)
     gen_crops = mtcnn(generated.permute(*perm))
 
@@ -111,15 +114,6 @@ def get_face_id_loss(generated: torch.Tensor, real: torch.Tensor,
     face_loss = get_l1_loss(gen_embeddings, real_embeddings, reduction='mean')
     return face_loss
 
-# def get_gan_loss(generated, real,  args):
-#     d_x = D_aug(real)
-#     d_g_z = D_aug(generated)
-
-
-
-
-#     gan_loss = gan_d_loss() + gan_g_loss()
-    #return torch.log(d_x) + torch.log(1 - d_g_z)
 
 """
 Don't know if we need these two below, but this basically define G and D's losses using BCE seperately, following the usual Pytorch tutorial
@@ -158,8 +152,8 @@ def gan_g_loss(generated, real, G, D, D_aug, args={'device': 'cuda'}):
 
     batch_size = generated.shape[0]
     real_label = torch.ones((batch_size, 1), device=args['device'])
-    print("real_label", real_label)
-    print("fake_output", fake_output)
+    # print("real_label", real_label)
+    # print("fake_output", fake_output)
     g_loss = criterion(fake_output, real_label) #-1 * log(D(G(z))
 
     return g_loss

@@ -9,3 +9,10 @@
 ## Tests
 
 ## Deployment
+
+
+## System Debuggig
+
+- NVIDIA Devices
+
+    'nvidia-smi'

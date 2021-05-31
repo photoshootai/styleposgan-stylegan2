@@ -1,6 +1,6 @@
 import torch
 import os, random
-# import cv2
+#import cv2
 
 import numpy as np
 import pytorch_lightning as pl
@@ -103,13 +103,14 @@ class DeepFashionDataset(Dataset):
     return source_datapoint, target_datapoint
 
 class DeepFashionDataModule(pl.LightningDataModule):
-  def __init__(self, source_image_path, pose_map_path, texture_map_path, batch_size=32, image_size=(512, 512)):
+  def __init__(self, source_image_path, pose_map_path, texture_map_path, batch_size=32, image_size=(512, 512), num_workers=2):
     super().__init__()
     self.img_path = source_image_path
     self.pose_path = pose_map_path
     self.texture_path = texture_map_path
     self.batch_size = batch_size
     self.image_size = image_size
+    self.num_workers = num_workers
 
   def setup(self, stage="fit"):
     self.train_data = DeepFashionDataset(self.img_path, self.pose_path, self.texture_path, image_size=self.image_size, train=True, batch_size=self.batch_size)
@@ -124,7 +125,7 @@ class DeepFashionDataModule(pl.LightningDataModule):
     return DataLoader(self.train_data, self.batch_size, num_workers=6)  # TODO: Add workers
     
   def val_dataloader(self):
-    return DataLoader(self.val_data, self.batch_size, num_workers=6)
+    return DataLoader(self.val_data, self.batch_size, num_workers=self.num_workers)
 
   def test_dataloader(self):
-    return DataLoader(self.test_data, self.batch_size, num_workers=6)
+    return DataLoader(self.test_data, self.batch_size, num_workers=self.num_workers)
