@@ -220,8 +220,6 @@ class MTCNN(nn.Module):
         if not self.selection_method:
             self.selection_method = 'largest' if self.select_largest else 'probability'
     
-    def set_device(self, device):
-        self.device = device
 
     def forward(self, img, save_path=None, return_prob=False):
         """Run MTCNN face detection on a PIL image or numpy array. This method performs both
@@ -314,7 +312,7 @@ class MTCNN(nn.Module):
                 img, self.min_face_size,
                 self.pnet, self.rnet, self.onet,
                 self.thresholds, self.factor,
-                self.device
+                img.device   #the device is being used further down in detect(), etc. Easiest way to ensure device agnositic behaviour is to take the device from the input img
             )
 
         boxes, probs, points = [], [], []

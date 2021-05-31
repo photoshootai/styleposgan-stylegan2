@@ -79,10 +79,7 @@ class StylePoseGAN(pl.LightningModule):
         """
         Separate repeated code from validation and training steps into different function for easier update/debugging
         """
-
-        #TODO: check the line below and have an alternative approach to it
-        #self.face_id_loss.set_mtcnn_device(self.device)
-
+        
         # Weights
         weight_l1 =1
         weight_vgg = 1
