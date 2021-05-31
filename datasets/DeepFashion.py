@@ -19,7 +19,6 @@ def resize_to_minimum_size(min_size, image):
 
 class DeepFashionDataset(Dataset):
   def __init__(self, source_image_path, pose_map_path, texture_map_path, image_size=(512, 512), train=False, batch_size=32):
-    
 
     self.img_transform = transforms.Compose([
             # transforms.Lambda(partial(resize_to_minimum_size, image_size)),

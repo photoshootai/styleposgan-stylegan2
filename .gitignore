@@ -40,7 +40,7 @@ Thumbs.db
 
 
 data/
-
+data_down/
 tb_logs/
 
 .pytest_cache/

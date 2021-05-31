@@ -60,13 +60,13 @@ class StylePoseGAN(pl.LightningModule):
     def set_mtcnn_device(self, device):
         self.mtcnn.set_device(device)
 
-    def forward(self, pose_map, texture_map):
-        # in lightning, forward defines the prediction/inference actions
-        E = self.p_net(pose_map)
-        z = self.a_net(texture_map)
+    # def forward(self, pose_map, texture_map):
+    #     # in lightning, forward defines the prediction/inference actions
+    #     E = self.p_net(pose_map)
+    #     z = self.a_net(texture_map)
 
-        gen_I = self.g_net.G(E, z)
-        return gen_I #Forward pass returns the generated image
+    #     gen_I = self.g_net.G(E, z)
+    #     return gen_I #Forward pass returns the generated image
     
 
     # training_step defined the train loop. # It is independent of forward
