@@ -22,7 +22,8 @@ class FaceIDLoss(nn.Module):
             for param in self.resnet.parameters():
                 param.requires_grad = False
 
-     
+    def set_mtcnn_device(self, device):
+        self.mtcnn.set_device(device)
 
     def forward(self, generated, real, crop_size=160):
         np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)

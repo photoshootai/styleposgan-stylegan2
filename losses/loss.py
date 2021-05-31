@@ -38,7 +38,7 @@ def get_face_id_loss(generated, gt, face_id_loss_model, crop_size):
 """
 Don't know if we need these two below, but this basically define G and D's losses using BCE seperately, following the usual Pytorch tutorial
 """
-def gan_d_loss(generated, real, G, D, D_aug, detach=True,  args={'device': 'cuda'}):
+def gan_d_loss(generated, real, G, D, D_aug, device, detach=True):
 
     #Training Discriminator
     G_requires_reals = False
@@ -49,8 +49,8 @@ def gan_d_loss(generated, real, G, D, D_aug, detach=True,  args={'device': 'cuda
 
     batch_size = generated.shape[0]
 
-    real_label = torch.ones((batch_size, 1), device=args['device'])
-    fake_label = torch.zeros((batch_size, 1), device=args['device'])
+    real_label = torch.ones((batch_size, 1), device=device)
+    fake_label = torch.zeros((batch_size, 1), device=device)
 
     disc_loss_real = criterion(real_output, real_label)
     disc_loss_fake = criterion(fake_output, fake_label)
@@ -66,12 +66,12 @@ def gan_d_loss(generated, real, G, D, D_aug, detach=True,  args={'device': 'cuda
     return total_disc_loss
 
 
-def gan_g_loss(generated, real, G, D, D_aug, args={'device': 'cuda'}):
+def gan_g_loss(generated, real, G, D, D_aug, device):
     criterion = nn.BCEWithLogitsLoss()
     fake_output, _ = D_aug(generated)
 
     batch_size = generated.shape[0]
-    real_label = torch.ones((batch_size, 1), device=args['device'])
+    real_label = torch.ones((batch_size, 1), device=device)
     # print("real_label", real_label)
     # print("fake_output", fake_output)
     g_loss = criterion(fake_output, real_label) #-1 * log(D(G(z))

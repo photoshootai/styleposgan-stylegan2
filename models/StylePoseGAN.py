@@ -1,3 +1,4 @@
+from torch._C import device
 from losses.FaceIDLoss import FaceIDLoss
 from losses.loss import get_patch_loss
 import os
@@ -62,13 +63,8 @@ class StylePoseGAN(pl.LightningModule):
 
         #Loss calculation models
         self.vgg16_perceptual_model = VGG16Perceptual(requires_grad=False)
-
-        self.automatic_optimization = False
-   
-
-    def setup(self, stage="fit"):
-        print("DEVICE inside SETUP is ", self.device)
         self.face_id_loss= FaceIDLoss(self.mtcnn_crop_size, requires_grad = False, device=self.device)
+        self.automatic_optimization = False
 
         
     # def forward(self, pose_map, texture_map):
@@ -83,6 +79,9 @@ class StylePoseGAN(pl.LightningModule):
         """
         Separate repeated code from validation and training steps into different function for easier update/debugging
         """
+
+        #TODO: check the line below and have an alternative approach to it
+        #self.face_id_loss.set_mtcnn_device(self.device)
 
         # Weights
         weight_l1 =1
@@ -117,11 +116,11 @@ class StylePoseGAN(pl.LightningModule):
                       weight_face * get_face_id_loss(I_dash_s_to_t, I_t, self.face_id_loss, crop_size=self.mtcnn_crop_size) 
 
 
-        gan_loss_1_d = weight_gan * gan_d_loss(I_dash_s.detach(), I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
-        gan_loss_2_d = weight_gan * gan_d_loss(I_dash_s_to_t.detach(), I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
+        gan_loss_1_d = weight_gan * gan_d_loss(I_dash_s.detach(), I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
+        gan_loss_2_d = weight_gan * gan_d_loss(I_dash_s_to_t.detach(), I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
 
-        gan_loss_1_g = weight_gan * gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
-        gan_loss_2_g = weight_gan * gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
+        gan_loss_1_g = weight_gan * gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device )
+        gan_loss_2_g = weight_gan * gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
 
         patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
 
