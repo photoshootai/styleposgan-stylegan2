@@ -15,4 +15,4 @@
 
 - NVIDIA Devices
 
-    'nvidia-smi'
+    Use 'nvidia-smi' in bash to see your devices 

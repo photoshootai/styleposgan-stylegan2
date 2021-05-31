@@ -52,6 +52,6 @@ Thumbs.db
 .vscode/
 
 
-data/
+/data
 
 tb_logs/
