@@ -38,8 +38,8 @@ class FaceIDLoss(nn.Module):
         is_valid_face = lambda i, c, p: c[i] is not None and p[i] > 0.95 
         build_face_mask = lambda c, p: [i for i in range(len(c)) if is_valid_face(i, c, p)]
 
-        print("Permute is", perm)
-        print("Generated in for MTCNN is", generated.permute(*perm).size())
+        # print("Permute is", perm)
+        # print("Generated in for MTCNN is", generated.permute(*perm).size())
 
         real_crops, real_probs = self.mtcnn(real.permute(*perm), return_prob=True)
         gen_crops = self.mtcnn(generated.permute(*perm))
