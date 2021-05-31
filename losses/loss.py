@@ -1,3 +1,4 @@
+from losses.FaceIDLoss import FaceIDLoss
 import torch
 import torch.nn as nn
 from torchvision import models
@@ -8,13 +9,6 @@ import numpy as np
 #TODO: evaluate other options along 2 dimensions of trade off, prediction quality and inference time
 from facenet_pytorch import MTCNN, InceptionResnetV1
 
-
-
-def get_total_loss_minus_gan_losses(I_dash_s, I_s, I_dash_s_to_t, I_t,  loss_weights, args):
-    total_loss = get_reconstruction_loss(I_dash_s, I_s,  loss_weights, args) + \
-                 get_reconstruction_loss(I_dash_s_to_t, I_t,  loss_weights, args) + \
-                 get_patch_loss(I_dash_s_to_t, I_t)
-    return total_loss 
 
     
 #Eq 4 in paper
@@ -36,6 +30,9 @@ def calcaluate_l_vgg(gen_tuples, gt_tuples):
     for i in range(len(gen_tuples)):
         total += (1/len(gen_tuples[i])) * get_l1_loss(gen_tuples[i], gt_tuples[i])
     return total
+
+def get_face_id_loss(generated, gt, face_id_loss_model, crop_size):
+    return face_id_loss_model(generated, gt, crop_size)
 
 
 """

@@ -3,15 +3,15 @@ import torch.nn as nn
 from facenet_pytorch import MTCNN, InceptionResnetV1
 
 import numpy as np
-from losses import get_l1_loss
+
 
 
 class FaceIDLoss(nn.Module):
-    def __init__(self, mtcnn_crop_size, weight=None, size_average= True, select_largest=True,  requires_grad=False):
+    def __init__(self, mtcnn_crop_size, weight=None, size_average= True, select_largest=True,  requires_grad=False, device=None):
         super(FaceIDLoss, self).__init__()
 
         
-        self.mtcnn = MTCNN(image_size=mtcnn_crop_size, select_largest=True)
+        self.mtcnn = MTCNN(image_size=mtcnn_crop_size, select_largest=True).eval()
         self.resnet = InceptionResnetV1(pretrained='vggface2').eval()
 
         if not requires_grad:
@@ -71,5 +71,5 @@ class FaceIDLoss(nn.Module):
         # cv2_imshow(show_tensor_list(real_crops_with_face))
         # cv2_imshow(show_tensor_list(gen_crops_with_face))
 
-        face_loss = get_l1_loss(gen_embeddings, real_embeddings, reduction='mean')
+        face_loss = nn.L1Loss(gen_embeddings, real_embeddings, reduction='mean')
         return face_loss

@@ -24,7 +24,7 @@ from stylegan2 import *
 
 #Import losses
 
-from losses import gan_g_loss, gan_d_loss, get_l1_loss, get_perceptual_vgg_loss, VGG16Perceptual, DPatch
+from losses import get_face_id_loss, gan_g_loss, gan_d_loss, get_l1_loss, get_perceptual_vgg_loss, VGG16Perceptual, DPatch
 
 class StylePoseGAN(pl.LightningModule):
 
@@ -62,18 +62,22 @@ class StylePoseGAN(pl.LightningModule):
 
         #Loss calculation models
         self.vgg16_perceptual_model = VGG16Perceptual(requires_grad=False)
-        self.face_id_loss= FaceIDLoss(mtcnn_crop_size, requires_grad = False)
+
         self.automatic_optimization = False
+   
+
+    def setup(self, stage="fit"):
+        print("DEVICE inside SETUP is ", self.device)
+        self.face_id_loss= FaceIDLoss(self.mtcnn_crop_size, requires_grad = False, device=self.device)
+
         
+    # def forward(self, pose_map, texture_map):
+    #     # in lightning, forward defines the prediction/inference actions
+    #     E = self.p_net(pose_map)
+    #     z = self.a_net(texture_map)
 
-
-    def forward(self, pose_map, texture_map):
-        # in lightning, forward defines the prediction/inference actions
-        E = self.p_net(pose_map)
-        z = self.a_net(texture_map)
-
-        gen_I = self.g_net.G(E, z)
-        return gen_I #Forward pass returns the generated image
+    #     gen_I = self.g_net.G(E, z)
+    #     return gen_I #Forward pass returns the generated image
     
     def compute_loss_components(self, batch):
         """
@@ -106,11 +110,11 @@ class StylePoseGAN(pl.LightningModule):
         #Need to detach at the top level 
         rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) + \
                       weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
-                      weight_face * self.face_id_loss(I_dash_s, I_s, crop_size=self.mtcnn_crop_size)
+                      weight_face * get_face_id_loss(I_dash_s, I_s, self.face_id_loss, crop_size=self.mtcnn_crop_size)
                                 
         rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) + \
                       weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
-                      weight_face * self.face_id_loss(I_dash_s_to_t, I_t, crop_size=self.mtcnn_crop_size) 
+                      weight_face * get_face_id_loss(I_dash_s_to_t, I_t, self.face_id_loss, crop_size=self.mtcnn_crop_size) 
 
 
         gan_loss_1_d = weight_gan * gan_d_loss(I_dash_s.detach(), I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
