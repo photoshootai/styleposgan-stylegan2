@@ -36,8 +36,8 @@ class FlickrDataset(Dataset):
     self.data = list(zip(self.data_id[:mid], self.data_id[mid:]))
     self.data += [(y, x) for x, y in self.data]
     
-    print('No dup pairs:', all(x[0] != x[1] for x in self.data))
-    print('no dup tups:', (sum(1 for x in self.data if (self.data.count(x) > 1)) == 0))
+    # print('No dup pairs:', all(x[0] != x[1] for x in self.data))
+    # print('no dup tups:', (sum(1 for x in self.data if (self.data.count(x) > 1)) == 0))
 
     train_prop = int(len(self.data) * 0.99)
     if self.train:

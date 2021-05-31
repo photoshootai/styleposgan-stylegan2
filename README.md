@@ -9,3 +9,10 @@
 ## Tests
 
 ## Deployment
+
+
+## System Debuggig
+
+- NVIDIA Devices
+
+    Use 'nvidia-smi' in bash to see your devices 
