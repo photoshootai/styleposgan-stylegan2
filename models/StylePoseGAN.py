@@ -38,11 +38,7 @@ class StylePoseGAN(pl.LightningModule):
 
         print('CUDA rank', self.global_rank)  # should be 0 on main, > 0 on other gpus/tpus/cpus
 
-       
-
-
         self.d_patch = DPatch() # Needs to be on same device as data!
-
 
         self.d_lr = d_lr
         self.g_lr = g_lr
@@ -54,6 +50,8 @@ class StylePoseGAN(pl.LightningModule):
         self.pl_mean = None
         self.pl_length_ma = EMA(0.99)
 
+        #TODO: This is wrong
+        #Noise Tensor
         self.register_buffer("input_noise", torch.randn(batch_size, self.image_size, self.image_size, 1))
 
         # self.input_noise = , device= self.device)
@@ -95,10 +93,10 @@ class StylePoseGAN(pl.LightningModule):
         
         # ANet
         z_s = self.a_net(S_texture_map)
-        # z_t = self.a_net(T_texture_map)
 
-        # Create model 
-
+        """
+        Generator Forward Pass
+        """
         # Repeat z num_layer times
         I_dash_s = self.g_net.G(z_s.repeat(1, 5, 1), self.input_noise, E_s) #G(E_s, z_s)            
         I_dash_s_to_t = self.g_net.G(z_s.repeat(1, 5, 1), self.input_noise, E_t)
@@ -153,7 +151,6 @@ class StylePoseGAN(pl.LightningModule):
         # min_opt.zero_grad()
         # max_opt.zero_grad()
 
-        (I_s, _, __), (I_t, ___, ____) = batch
         (rec_loss_1, rec_loss_2, gan_loss_1_d, gan_loss_2_d, gan_loss_1_g,
          gan_loss_2_g, patch_loss, _, I_dash_s_to_t, z_s) = self.compute_loss_components(batch)
 
@@ -259,6 +256,7 @@ class StylePoseGAN(pl.LightningModule):
         total_gen_loss = total_gen_loss / N
         total_disc_loss = total_disc_loss / N
 
+        #TODO: I think this is incorrect: -Madhav.
         max_opt.step()
         min_opt.step()  # in lucidrains, optstep is after ema
 
