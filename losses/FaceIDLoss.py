@@ -5,7 +5,6 @@ from facenet_pytorch import MTCNN, InceptionResnetV1
 import numpy as np
 
 
-
 class FaceIDLoss(nn.Module):
     def __init__(self, mtcnn_crop_size, weight=None, size_average= True, select_largest=True,  requires_grad=False, device=None):
         super(FaceIDLoss, self).__init__()
@@ -26,20 +25,29 @@ class FaceIDLoss(nn.Module):
         self.mtcnn.set_device(device)
 
     def forward(self, generated, real, crop_size=160):
+        # mtcnn uses deprecated numpy practices; need to suppress warnings 
         np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)
-        
+
         is_batched = len(real.shape) == 4 #Becayse if its batched then real will have 4 dimentions with 1 for batch
-
+        
         if is_batched:
-            perm = (0, 2, 3, 1)
+            perm = (0, 2, 3, 1)  # (b, c, h, w) -> (b, h, w, c)
         else:
-            perm = (1, 2, 0)
+            perm = (1, 2, 0)  # (c, h, w) -> (h, w, c)
 
+        """
+        The following normalization makes mtcnn work and is noticeably faster.
+        We should strongly consider normalizing G/A/Pnet outputs
+        -Kshitij
+        """
+        # generated = (generated - torch.min(generated)) / (torch.max(generated) - torch.min(generated))
+        # real = (real - torch.min(real)) / (torch.max(real) - torch.min(real))
+
+        normalize = lambda t: (t - torch.min(t)) / (torch.max(t) - torch.min(t))
         is_valid_face = lambda i, c, p: c[i] is not None and p[i] > 0.95 
         build_face_mask = lambda c, p: [i for i in range(len(c)) if is_valid_face(i, c, p)]
 
-        # print("Permute is", perm)
-        # print("Generated in for MTCNN is", generated.permute(*perm).size())
+        generated, real = normalize(generated), normalize(real)
 
         real_crops, real_probs = self.mtcnn(real.permute(*perm), return_prob=True)
         gen_crops = self.mtcnn(generated.permute(*perm))
