@@ -95,8 +95,7 @@ class StylePoseGAN(pl.LightningModule):
         z_s = self.a_net(S_texture_map)
         # z_t = self.a_net(T_texture_map)
 
-        # Create model 
-
+        # GNet forward prop
         # Repeat z num_layer times
         I_dash_s = self.g_net.G(z_s.repeat(1, 5, 1), self.input_noise, E_s) #G(E_s, z_s)            
         I_dash_s_to_t = self.g_net.G(z_s.repeat(1, 5, 1), self.input_noise, E_t)

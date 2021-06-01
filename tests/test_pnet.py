@@ -21,8 +21,8 @@ def test_pnet_forward_training_sourceposebatch():
     texture_map_path="./data_down/TextureMaps"
     input_image_size = 512
     expected_image_size = 32
-    input_batch_size = 4
-    expected_batch_size = 4
+    input_batch_size = 1
+    expected_batch_size = 1
     expected_channels = 512
     #Initialization
     ds = DeepFashionDataset(source_image_path, pose_map_path, texture_map_path, image_size=(input_image_size, input_image_size), train=True, batch_size=input_batch_size)
