@@ -26,11 +26,15 @@ class DeepFashionDataset(Dataset):
             transforms.Resize(image_size), #TODO: Need to make this take image_size from 
             #RandomApply(aug_prob, transforms.RandomResizedCrop(image_size, scale=(0.5, 1.0), ratio=(0.98, 1.02)), transforms.CenterCrop(image_size)),
             transforms.ToTensor(),
+            # transforms.Normalize(mean=[0.485, 0.456, 0.406],  # standard image norm (based on camera bayes color filtering)
+            #                      std=[0.229, 0.224, 0.225])
             #transforms.Lambda(expand_greyscale(transparent))
         ])
     
     self.texture_transform = transforms.Compose([
-      transforms.ToTensor()
+      transforms.ToTensor(),
+      # transforms.Normalize(mean=[0.485, 0.456, 0.406],
+      #                      std=[0.229, 0.224, 0.225])
     ])
     
     
@@ -120,10 +124,10 @@ class DeepFashionDataModule(pl.LightningDataModule):
     training_proportion = int(len(self.train_data) * 0.95)
     self.train_data, self.val_data = random_split(self.train_data, [training_proportion, len(self.train_data)-training_proportion])
     
-    # print(len(self.train_data), len(self.val_data), len(self.test_data))
+    print('train:', len(self.train_data), 'validation:', len(self.val_data), 'test:', len(self.test_data))
 
   def train_dataloader(self):
-    return DataLoader(self.train_data, self.batch_size, num_workers=6)  # TODO: Add workers
+    return DataLoader(self.train_data, self.batch_size, num_workers=self.num_workers)  # TODO: Add workers
     
   def val_dataloader(self):
     return DataLoader(self.val_data, self.batch_size, num_workers=self.num_workers)
