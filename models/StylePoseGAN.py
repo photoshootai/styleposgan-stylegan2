@@ -36,14 +36,13 @@ class StylePoseGAN(pl.LightningModule):
         self.p_net = PNet()
         self.g_net = GNet(image_size=image_size, latent_dim=latent_dim ) #Contains g_net.G, g_net.D, g_net.D_aug, g_net.S
 
-        print('device rank', self.global_rank)  # should be 0 on main, > 0 on other gpus/tpus/cpus
-
-
         self.d_patch = DPatch() # Needs to be on same device as data!
 
         self.d_lr = d_lr
         self.g_lr = g_lr
         self.image_size = image_size
+        self.batch_size = batch_size
+        self.latent_dim = latent_dim
         self.mtcnn_crop_size = mtcnn_crop_size
 
         self.steps = steps
@@ -65,14 +64,9 @@ class StylePoseGAN(pl.LightningModule):
         self.face_id_loss = FaceIDLoss(self.mtcnn_crop_size, requires_grad = False, device=self.device)
         self.automatic_optimization = False
 
+        print('Device Rank', self.global_rank)  # should be 0 on main, > 0 on other gpus/tpus/cpus
+        print("StylePoseGAN module initialized with: ", {"image_size": self.image_size, "batch_size": self.batch_size, "latent_dim": self.latent_dim} )
 
-    # def forward(self, pose_map, texture_map):
-    #     # in lightning, forward defines the prediction/inference actions
-    #     E = self.p_net(pose_map)
-    #     z = self.a_net(texture_map)
-
-    #     gen_I = self.g_net.G(E, z)
-    #     return gen_I #Forward pass returns the generated image
 
     def compute_loss_components(self, batch):
         """
@@ -171,7 +165,7 @@ class StylePoseGAN(pl.LightningModule):
         # max_opt.zero_grad()
 
         (rec_loss_1, rec_loss_2, gan_loss_1_d, gan_loss_2_d, gan_loss_1_g,
-         gan_loss_2_g, patch_loss, _, I_dash_s_to_t, z_s) = self.compute_loss_components(batch)
+         gan_loss_2_g, patch_loss, _ , I_dash_s_to_t, z_s) = self.compute_loss_components(batch)
 
         #Total Loss that needs to be maximized. The only GAN loss here is -[log(D(x)) + log(1-D(G(z)))] for the respective args
         l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d + patch_loss
@@ -185,6 +179,7 @@ class StylePoseGAN(pl.LightningModule):
         # max_opt.step()
         # gan_loss_1_g = gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
         # gan_loss_2_g = gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
+
 
         #This is the total loss that needs to be minimized. The only GAN loss here is -log(D(G(z)) times two for the two reconstruction losses
         # need to merge losses?
