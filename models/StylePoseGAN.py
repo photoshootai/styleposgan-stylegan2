@@ -52,7 +52,7 @@ class StylePoseGAN(pl.LightningModule):
 
         #TODO: This is wrong
         #Noise Tensor
-        self.register_buffer("input_noise", torch.randn(batch_size, self.image_size, self.image_size, 1))
+        #self.register_buffer("input_noise", torch.randn(batch_size, self.image_size, self.image_size, 1))
 
         # self.input_noise = , device= self.device)
         # self.input_noise = torch.FloatTensor(batch_size, self.image_size, self.image_size, 1, device=self.device).uniform_(0., 1.) #TODO: Fix to generalized case
@@ -98,11 +98,16 @@ class StylePoseGAN(pl.LightningModule):
         """
         Generator Forward Pass
         """
+        
+        input_noise = torch.randn(I_s.shape[0], self.image_size, self.image_size, 1).type_as(z_s)
+        print("Forward Pass details: ", {"z_s_repeated": z_s.repeat(1, 5, 1).size(), "E_s": E_s.size(), "E_t": E_t.size(), "input_noise": input_noise.size()})
         # Repeat z num_layer times
-        I_dash_s = self.g_net.G(z_s.repeat(1, 5, 1), self.input_noise, E_s) #G(E_s, z_s)
-        I_dash_s_to_t = self.g_net.G(z_s.repeat(1, 5, 1), self.input_noise, E_t)
+        I_dash_s = self.g_net.G(z_s.repeat(1, 5, 1), input_noise, E_s) #G(E_s, z_s)
+        I_dash_s_to_t = self.g_net.G(z_s.repeat(1, 5, 1), input_noise, E_t)
         
         if not (self.steps % 750):
+            if not (os.path.isdir('./test_ims')):
+                os.mkdir('./test_ims')
             save_image(normalize(I_dash_s_to_t), f'./test_ims/step_{self.steps}.jpg')
 
         # Consider normalizing:
