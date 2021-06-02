@@ -46,7 +46,8 @@ def main(args):
 
     #For reporducibility: deterministic = True and next line
     seed_everything(42, workers=True)
-    trainer = Trainer(gpus=args.gpus,logger=logger, profiler="simple")
+    
+    trainer = Trainer(tpu_cores=args.tpu_cores, gpus=args.gpus, precision=args.precision, logger=logger, profiler="simple")
 
     source_image_path="./data/TrainingData/SourceImages"
     pose_map_path="./data/TrainingData/PoseMaps"
