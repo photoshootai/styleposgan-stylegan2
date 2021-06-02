@@ -32,6 +32,7 @@ class ResidualBlock(nn.Module):
 
       #execute the main path (f(x))
       x = self.res_conv1(x)
+      #print(x.size())
       x = self.res_bn1(x)
       x = self.res_relu1(x)
       x = self.res_conv2(x)

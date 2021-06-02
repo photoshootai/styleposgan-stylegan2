@@ -84,5 +84,5 @@ class GNet(nn.Module):
         self.SE.load_state_dict(self.S.state_dict())
         self.GE.load_state_dict(self.G.state_dict())
 
-    def forward(self, x):  # this is not being used for training?
+    def forward(self, x):  # this is not being used for training? nope
         return x

@@ -29,5 +29,5 @@ class PNet(nn.Module):
         x = self.res_block4(x)
         
         E = x
-        
+        #print(E.size())
         return E

@@ -67,7 +67,6 @@ class StylePoseGAN(pl.LightningModule):
         print('Device Rank', self.global_rank)  # should be 0 on main, > 0 on other gpus/tpus/cpus
         print("StylePoseGAN module initialized with: ", {"image_size": self.image_size, "batch_size": self.batch_size, "latent_dim": self.latent_dim} )
 
-
     def compute_loss_components(self, batch):
         """
         Separate repeated code from validation and training steps into different function for easier update/debugging

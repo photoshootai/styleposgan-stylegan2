@@ -503,7 +503,7 @@ class GeneratorBlock(nn.Module):
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False) if upsample else None
 
         self.to_style1 =  nn.Linear(latent_dim, input_channels) 
-        self.to_noise1 = nn.Linear(1, filters)
+        self.to_noise1 = nn.Linear(1, filters) 
         self.conv1 = Conv2DMod(input_channels, filters, 3)
         
         self.to_style2 = nn.Linear(latent_dim, filters)
@@ -512,21 +512,22 @@ class GeneratorBlock(nn.Module):
 
         self.activation = leaky_relu()
         self.to_rgb = RGBBlock(latent_dim, filters, upsample_rgb, rgba)
+        #print("GeneratorBlock has been inited")
 
     def forward(self, x, prev_rgb, istyle, inoise):
-        # print("----Gen Block----")
-        # print("X Dim is " + str(x.size()))
+        #print("----Gen Block----")
+        #print("X Dim is " +  str(x.size()))
         if exists(self.upsample):
             x = self.upsample(x)
-            # print("X Dim after upsampling " + str(x.size()))
+            #print("X Dim after upsampling " + str(x.size()))
 
         # print("inoise size and device is", inoise.size(), inoise.device) 
 
         inoise = inoise[:, :x.shape[2], :x.shape[3], :]
         
-        # print("Noise 1 before permutation is: ", inoise.shape)
+        #print("Noise 1 before permutation is: ", inoise.shape)
         noise1 = self.to_noise1(inoise).permute((0, 3, 1, 2)) # was earlier ((0, 3, 2, 1))
-        # print("Noise1 shape is " + str(noise1.size()))
+        #print("Noise1 shape is " + str(noise1.size()))
 
         noise2 = self.to_noise2(inoise).permute((0, 3, 1, 2)) # was earlier ((0, 3, 2, 1))
 
@@ -534,8 +535,8 @@ class GeneratorBlock(nn.Module):
         x = self.conv1(x, style1)
       
 
-        # print("While adding, X dim after conv1 is " + str(x.size()))
-        # print("While adding, Noise1 is " + str(noise1.size()))
+        #print("While adding, X dim after conv1 is " + str(x.size()))
+        #print("While adding, Noise1 is " + str(noise1.size()))
         x = self.activation(x + noise1)
 
         style2 = self.to_style2(istyle)
@@ -548,7 +549,7 @@ class GeneratorBlock(nn.Module):
 
         rgb = self.to_rgb(x, prev_rgb, istyle)
 
-        # print("X dim at the end of Gen Block is: " + str(x.size()))
+        #print("X dim at the end of Gen Block is: " + str(x.size()))
         return x, rgb
 
 class DiscriminatorBlock(nn.Module):
@@ -633,32 +634,33 @@ class Generator(nn.Module):
             
             self.blocks.append(block)
         
-        # print("No of Gen Blocks created: ", len(self.blocks))
+        #print("No of Gen Blocks created: ", len(self.blocks))
 
     #Added s_input as an additional argument to forward
     def forward(self, z_inputs, input_noise, s_input):
-        batch_size = z_inputs.shape[0]
+        batch_size = z_inputs.shape[0] # perhaps should be s_input.shape[0]
         image_size = self.image_size
 
-        # print("Starting forward pass: ")
-        # print("Batch size is " + str(batch_size))
-        # print("Image size is " + str(image_size))
+        #print("Starting forward pass: ")
+        #print("Batch size is " + str(batch_size))
+        #print("Image size is " + str(image_size))
 
         # if self.s_input is None:
         #     avg_style = z_inputs.mean(dim=1)[:, :, None, None]
         #     x = self.to_initial_block(avg_style)
         # else:
         x = s_input
-        # print("s_input is: " + str(s_input.size()))
+        #print("s_input is: " + str(s_input.size()))
         rgb = None
         z_inputs = z_inputs.transpose(0, 1)#Change (x, y, z) to (y, x, z)
 
-        # print("Initial Conv Dims is: " + str(self.initial_conv))
+        #print("Initial Conv Dims is: " + str(self.initial_conv))
         x = self.initial_conv(x)
-        # print("X dim after convolution is: " + str(x.size()))
+        #print("X dim after convolution is: " + str(x.size()))
         
         count = 0
         # print("Zipped: ", len(z_inputs))
+        #print("z_input length is " , len(z_inputs), ", self.blocks length is ", len(self.blocks), ", self.attns length is ", len(self.attns))
         for z_input, block, attn in zip(z_inputs, self.blocks, self.attns):
             count+=1
             if exists(attn): 
@@ -714,8 +716,8 @@ class Discriminator(nn.Module):
 
     def forward(self, x):
         b, *_ = x.shape
-        # print("Discriminator forward pass")
-        # print("X shape is", x.size())
+        print("Discriminator forward pass")
+        print("X shape is", x.size())
         quantize_loss = torch.zeros(1).to(x)
 
         for (block, attn_block, q_block) in zip(self.blocks, self.attn_blocks, self.quantize_blocks):
@@ -735,7 +737,8 @@ class Discriminator(nn.Module):
         # print("to_logit is " + str(self.to_logit))
         x = self.to_logit(x)
 
-        # print("X final output before squeezing is", x)
+        print("X final output before squeezing is", x)
+        print("quantize_loss ", quantize_loss)
         return x, quantize_loss #Earlier was squeezed, we changed to x.squeeze(), quantize_loss
 
 # class StyleGAN2(nn.Module): #We use this exact class definition with modifications as GNet.py
