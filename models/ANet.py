@@ -13,7 +13,7 @@ def get_anet_final_block(in_chan=512, out_chan=2048, hidden_chan=1024, kernel_si
         # nn.ReLU(inplace=True),
         nn.Conv2d(in_chan,in_chan,kernel_size,stride,padding),
         nn.ReLU(inplace=True),
-        nn.Flatten()
+        nn.Flatten(start_dim =1, end_dim = -1)
         # nn.Conv2d(hidden_chan,hidden_chan,kernel_size,2,padding),
         # nn.ReLU(inplace=True)
     )
@@ -45,8 +45,8 @@ class ANet(nn.Module):
         x = self.last_block(x)
 
         #to make it compatible with the fully connected layer, move channels to the final index
-        x = x.permute(0,2,3,1)
+        #x = x.permute(0,2,3,1)
         z = self.linear(x)
-        z = z.squeeze(dim=1) # remove an empty axis, another axis could optionally be removed
+        z = z.unsqueeze(dim=1) # remove an empty axis, another axis could optionally be removed
         
         return z
