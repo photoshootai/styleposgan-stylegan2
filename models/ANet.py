@@ -1,4 +1,4 @@
- import torch.nn as nn
+import torch.nn as nn
 from .layers import ResidualBlock
 
 def get_anet_final_block(in_chan=512, out_chan=2048, hidden_chan=1024, kernel_size=(3,3), stride=4, padding=1, bias=False):
