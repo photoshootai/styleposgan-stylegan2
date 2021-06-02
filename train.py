@@ -47,8 +47,8 @@ def main(args):
     #For reporducibility: deterministic = True and next line
     seed_everything(42, workers=True)
     
-    #Init Trainer
-    trainer = Trainer(tpu_cores=args.tpu_cores, gpus=args.gpus, precision=args.precision, logger=logger, profiler="simple")
+    #Init Train
+    trainer = Trainer(tpu_cores=args.tpu_cores, gpus=args.gpus, precision=args.precision, logger=logger, profiler="simple", progress_bar_refresh_rate=20)
 
     
     datamodule = DeepFashionDataModule(args.source_image_path, args.pose_map_path, args.texture_map_path, batch_size=args.batch_size, image_size=(args.image_size, args.image_size), num_workers=args.num_workers)
