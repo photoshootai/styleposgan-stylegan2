@@ -93,57 +93,57 @@ class StylePoseGAN(pl.LightningModule):
         z_s = self.a_net(S_texture_map)  # needs norm
         # z_t = self.a_net(T_texture_map)
 
-        # Create model
+        # # Create model
 
-        """
-        Generator Forward Pass
-        """
+        # """
+        # Generator Forward Pass
+        # """
         
-        input_noise = torch.randn(I_s.shape[0], self.image_size, self.image_size, 1).type_as(z_s)
+        # input_noise = torch.randn(I_s.shape[0], self.image_size, self.image_size, 1).type_as(z_s)
         # print("Forward Pass details: ", {"z_s_repeated": z_s.repeat(1, 5, 1).size(), "E_s": E_s.size(), "E_t": E_t.size(), "input_noise": input_noise.size()})
         # Repeat z num_layer times
-        I_dash_s = self.g_net.G(z_s.repeat(1, 5, 1), input_noise, E_s) #G(E_s, z_s)
-        I_dash_s_to_t = self.g_net.G(z_s.repeat(1, 5, 1), input_noise, E_t)
+        # I_dash_s = self.g_net.G(z_s.repeat(1, 5, 1), input_noise, E_s) #G(E_s, z_s)
+        # I_dash_s_to_t = self.g_net.G(z_s.repeat(1, 5, 1), input_noise, E_t)
         
-        if not (self.steps % 750):
-            if not (os.path.isdir('./test_ims')):
-                os.mkdir('./test_ims')
-            save_image(normalize(I_dash_s_to_t), f'./test_ims/step_{self.steps}.jpg')
+        # if not (self.steps % 750):
+        #     if not (os.path.isdir('./test_ims')):
+        #         os.mkdir('./test_ims')
+        #     save_image(normalize(I_dash_s_to_t), f'./test_ims/step_{self.steps}.jpg')
 
-        # Consider normalizing:
-        # I_s = normalize(I_s)
-        # I_t = normalize(I_t)
-        # E_s = normalize(E_s)
-        # E_t = normalize(E_t)
-        # z_s = normalize(z_s)
-        # I_dash_s = normalize(I_dash_s)
-        # I_dash_s_to_t = normalize(I_dash_s_to_t)
+        # # Consider normalizing:
+        # # I_s = normalize(I_s)
+        # # I_t = normalize(I_t)
+        # # E_s = normalize(E_s)
+        # # E_t = normalize(E_t)
+        # # z_s = normalize(z_s)
+        # # I_dash_s = normalize(I_dash_s)
+        # # I_dash_s_to_t = normalize(I_dash_s_to_t)
 
-        #Need to detach at the top level
-        rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) + \
-                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
-                      weight_face * get_face_id_loss(I_dash_s, I_s, self.face_id_loss, crop_size=self.mtcnn_crop_size)
+        # #Need to detach at the top level
+        # rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) + \
+        #               weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
+        #               weight_face * get_face_id_loss(I_dash_s, I_s, self.face_id_loss, crop_size=self.mtcnn_crop_size)
 
-        rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) + \
-                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
-                      weight_face * get_face_id_loss(I_dash_s_to_t, I_t, self.face_id_loss, crop_size=self.mtcnn_crop_size)
-
-
-        gan_loss_1_d = weight_gan * gan_d_loss(I_dash_s.detach(), I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
-        gan_loss_2_d = weight_gan * gan_d_loss(I_dash_s_to_t.detach(), I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
-
-        gan_loss_1_g = weight_gan * gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device )
-        gan_loss_2_g = weight_gan * gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
-
-        patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
-
-        return (rec_loss_1, rec_loss_2,
-                gan_loss_1_d, gan_loss_2_d,  # skyrockets, maybe we need to regulate?
-                gan_loss_1_g, gan_loss_2_g,  # flips between 0, and very large numbers
-                patch_loss,
-                I_dash_s, I_dash_s_to_t, z_s)
+        # rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) + \
+        #               weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
+        #               weight_face * get_face_id_loss(I_dash_s_to_t, I_t, self.face_id_loss, crop_size=self.mtcnn_crop_size)
 
 
+        # gan_loss_1_d = weight_gan * gan_d_loss(I_dash_s.detach(), I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
+        # gan_loss_2_d = weight_gan * gan_d_loss(I_dash_s_to_t.detach(), I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
+
+        # gan_loss_1_g = weight_gan * gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device )
+        # gan_loss_2_g = weight_gan * gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
+
+        # patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
+
+        # # return (rec_loss_1, rec_loss_2,
+        # #         gan_loss_1_d, gan_loss_2_d,  # skyrockets, maybe we need to regulate?
+        # #         gan_loss_1_g, gan_loss_2_g,  # flips between 0, and very large numbers
+        # #         patch_loss,
+        # #         I_dash_s, I_dash_s_to_t, z_s)
+
+        return (1,1, 1,1, 1, 1, 1, I_s, I_t, z_s)
     # training_step defined the train loop. # It is independent of forward
     def training_step(self, batch, batch_idx):
         """
