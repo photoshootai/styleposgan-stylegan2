@@ -100,7 +100,7 @@ class StylePoseGAN(pl.LightningModule):
         """
         
         input_noise = torch.randn(I_s.shape[0], self.image_size, self.image_size, 1).type_as(z_s)
-        print("Forward Pass details: ", {"z_s_repeated": z_s.repeat(1, 5, 1).size(), "E_s": E_s.size(), "E_t": E_t.size(), "input_noise": input_noise.size()})
+        # print("Forward Pass details: ", {"z_s_repeated": z_s.repeat(1, 5, 1).size(), "E_s": E_s.size(), "E_t": E_t.size(), "input_noise": input_noise.size()})
         # Repeat z num_layer times
         I_dash_s = self.g_net.G(z_s.repeat(1, 5, 1), input_noise, E_s) #G(E_s, z_s)
         I_dash_s_to_t = self.g_net.G(z_s.repeat(1, 5, 1), input_noise, E_t)
@@ -258,9 +258,9 @@ class StylePoseGAN(pl.LightningModule):
         # Moving Averages
         avg_pl_length = self.pl_mean
         is_main = self.global_rank == 0
-        apply_path_penalty = self.pl_reg and self.steps > 5000 and self.steps % 32 == 0
+        apply_path_penalty = self.pl_reg and self.steps > 5000 and self.steps % 32 == 0  # TODO: change condition to > 5000
 
-        total_gen_loss = torch.zeros((1), device=self.device)
+        total_gen_loss = torch.zeros((1), device=self.device) 
         total_disc_loss = torch.zeros((1), device=self.device)
 
         for loss_dict in losses:
@@ -291,9 +291,10 @@ class StylePoseGAN(pl.LightningModule):
         max_opt.step()
         min_opt.step()  # in lucidrains, optstep is after ema
 
-        if apply_path_penalty and not np.isnan(avg_pl_length):
+        if apply_path_penalty and not torch.isnan(avg_pl_length):
+            # print('Applying path penalty')
             self.pl_mean = self.pl_length_ma.update_average(self.pl_mean, avg_pl_length)
-            self.track(self.pl_mean, 'PL')
+            # self.track(self.pl_mean, 'PL')
 
         #EMA if on main thread
         if is_main:
