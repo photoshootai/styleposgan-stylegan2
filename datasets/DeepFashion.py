@@ -20,10 +20,17 @@ def resize_to_minimum_size(min_size, image):
 class DeepFashionDataset(Dataset):
   def __init__(self, source_image_path, pose_map_path, texture_map_path, image_size=(512, 512), train=False, batch_size=32):
     
+    self.image_size = image_size
+    self.batch_size = batch_size
+    self.img_path = source_image_path
+    self.pose_path = pose_map_path
+    self.texture_path = texture_map_path
+    self.train = train
 
+    print("Values when initializing Dataset are: ", {"image_size": self.image_size, "batch_size": self.batch_size})
     self.img_transform = transforms.Compose([
             # transforms.Lambda(partial(resize_to_minimum_size, image_size)),
-            transforms.Resize(image_size), #TODO: Need to make this take image_size from 
+            transforms.Resize(self.image_size),
             #RandomApply(aug_prob, transforms.RandomResizedCrop(image_size, scale=(0.5, 1.0), ratio=(0.98, 1.02)), transforms.CenterCrop(image_size)),
             transforms.ToTensor(),
             # transforms.Normalize(mean=[0.485, 0.456, 0.406],  # standard image norm (based on camera bayes color filtering)
@@ -37,12 +44,7 @@ class DeepFashionDataset(Dataset):
       #                      std=[0.229, 0.224, 0.225])
     ])
     
-    
-    self.batch_size = batch_size
-    self.img_path = source_image_path
-    self.pose_path = pose_map_path
-    self.texture_path = texture_map_path
-    self.train = train
+
 
     #begin a list where we will keep the id for given photos. 
     #the same ID should be found in all 3 folders
@@ -117,6 +119,8 @@ class DeepFashionDataModule(pl.LightningDataModule):
     self.image_size = image_size
     self.num_workers = num_workers
 
+    print("DataModule intialized with: ", {"img_path": self.img_path, "pose_path":self.pose_path, "texture_path": self.texture_path, "batch_size": self.batch_size, "image_size": self.image_size, "num_workers": self.num_workers})
+
   def setup(self, stage="fit"):
     self.train_data = DeepFashionDataset(self.img_path, self.pose_path, self.texture_path, image_size=self.image_size, train=True, batch_size=self.batch_size)
     self.test_data = DeepFashionDataset(self.img_path, self.pose_path, self.texture_path, image_size=self.image_size, train=False, batch_size=self.batch_size)
@@ -124,13 +128,11 @@ class DeepFashionDataModule(pl.LightningDataModule):
     training_proportion = int(len(self.train_data) * 0.95)
     self.train_data, self.val_data = random_split(self.train_data, [training_proportion, len(self.train_data)-training_proportion])
     
-    print('train:', len(self.train_data), 'validation:', len(self.val_data), 'test:', len(self.test_data))
+    print("Data Split after setting up DataModule is: ", 'train:', len(self.train_data), 'validation:', len(self.val_data), 'test:', len(self.test_data))
 
   def train_dataloader(self):
-    return DataLoader(self.train_data, self.batch_size, num_workers=self.num_workers)  # TODO: Add workers
-    
+    return DataLoader(self.train_data, self.batch_size, num_workers=self.num_workers) 
   def val_dataloader(self):
     return DataLoader(self.val_data, self.batch_size, num_workers=self.num_workers)
-
   def test_dataloader(self):
     return DataLoader(self.test_data, self.batch_size, num_workers=self.num_workers)

@@ -39,21 +39,19 @@ def main(args):
     #@ Kshitij- why do we need this?
     # gc.collect()
     torch.cuda.empty_cache()
-
     torch.autograd.set_detect_anomaly(True)
+
     #Logging
     logger = TensorBoardLogger('tb_logs', name='my_model')
 
     #For reporducibility: deterministic = True and next line
     seed_everything(42, workers=True)
     
+    #Init Trainer
     trainer = Trainer(tpu_cores=args.tpu_cores, gpus=args.gpus, precision=args.precision, logger=logger, profiler="simple")
 
-    source_image_path="./data/TrainingData/SourceImages"
-    pose_map_path="./data/TrainingData/PoseMaps"
-    texture_map_path="./data/TrainingData/TextureMaps"
     
-    datamodule = DeepFashionDataModule(source_image_path, pose_map_path, texture_map_path, batch_size=args.batch_size, image_size=(args.image_size, args.image_size), num_workers=args.num_workers)
+    datamodule = DeepFashionDataModule(args.source_image_path, args.pose_map_path, args.texture_map_path, batch_size=args.batch_size, image_size=(args.image_size, args.image_size), num_workers=args.num_workers)
     model = StylePoseGAN(args.image_size, batch_size=args.batch_size)
     
     #trainer.fit(model, train_loader)
@@ -76,20 +74,19 @@ if __name__ == "__main__":
     #parser = StylePoseGAN.add_model_specific_args(parser)
 
     #Trainer Args
-    parser.add_argument('--data_path', type=str, default="./data/deepfashion")
+    parser.add_argument('--source_image_path', type=str, default="./data/TrainingData/SourceImages")
+    parser.add_argument('--pose_map_path', type=str, default="./data/TrainingData/PoseMaps")
+    parser.add_argument('--texture_map_path', type=str, default="./data/TrainingData/TextureMaps")
+
     parser.add_argument('--num_workers', type=int, default=2)
-    parser.add_argument('--batch_size', type=int, default=2)
+    parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('--gpus', default=None)
-    parser.add_argument('--image_size', type=int, default=256)
+    parser.add_argument('--image_size', type=int, default=512)
     parser.add_argument('--tpu_cores', type=int, default=None)
-    parser.add_argument('--precision', type=int, default=32 )
-    parser.add_argument('--accumulate_grad_batches', type=int, default=32 )
+    parser.add_argument('--precision', type=int, default=32)
+    parser.add_argument('--accumulate_grad_batches', type=int, default=32)
     parser.add_argument('--top_k_training', type=bool, default=False)
     parser.add_argument('--deterministic', type=bool, default=True)
-
-
-    
-
 
     args = parser.parse_args()
 
