@@ -45,7 +45,7 @@ class ANet(nn.Module):
         x = self.last_block(x)
 
         #to make it compatible with the fully connected layer, move channels to the final index
-        x = x.permute(0,2,3,1)
+        # x = x.permute(0,2,3,1)
         z = self.linear(x)
         z = z.squeeze(dim=1) # remove an empty axis, another axis could optionally be removed
         
