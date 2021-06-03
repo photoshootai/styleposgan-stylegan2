@@ -32,12 +32,11 @@ class StylePoseGAN(pl.LightningModule):
     def __init__(self, image_size, batch_size, g_lr=2e-3, d_lr=2e-3, ttur_mult=2, latent_dim=2048,
                  network_capacity=16, attn_layers=(1, 2, 3, 4), mtcnn_crop_size=160, steps=0, pl_reg=True):  # changed attention to tuple since mutable default args cause problems
         super().__init__()
-        self.a_net = ANet()
-        self.p_net = PNet()
-        self.g_net = GNet(image_size=image_size, latent_dim=latent_dim ) #Contains g_net.G, g_net.D, g_net.D_aug, g_net.S
+        self.a_net = ANet(im_chan=3).train()
+        self.p_net = PNet(im_chan=3).train()
+        self.g_net = GNet(image_size=image_size, latent_dim=latent_dim).train() #Contains g_net.G, g_net.D, g_net.D_aug, g_net.S
 
-        self.d_patch = DPatch() # Needs to be on same device as data!
-
+        #Attributes
         self.d_lr = d_lr
         self.g_lr = g_lr
         self.image_size = image_size
@@ -47,12 +46,13 @@ class StylePoseGAN(pl.LightningModule):
 
         self.steps = steps
         self.pl_reg = pl_reg
-        self.pl_mean = None
+        self.pl_mean = None #TODO: what should this be set to if at all
         self.pl_length_ma = EMA(0.99)
 
         #Loss calculation models
-        self.vgg16_perceptual_model = VGG16Perceptual(requires_grad=False)
-        self.face_id_loss = FaceIDLoss(self.mtcnn_crop_size, requires_grad = False, device=self.device)
+        self.vgg16_perceptual_model = VGG16Perceptual(requires_grad=False).eval()
+        self.face_id_loss = FaceIDLoss(self.mtcnn_crop_size, requires_grad = False, device=self.device).eval()
+        self.d_patch = DPatch().eval() # Needs to be on same device as data!
 
         #Disabling Pytorch lightning's default optimizer
         self.automatic_optimization = False
@@ -82,11 +82,10 @@ class StylePoseGAN(pl.LightningModule):
 
         # ANet
         z_s = self.a_net(S_texture_map)  # needs norm
-        # z_t = self.a_net(T_texture_map)
 
         #GNet        
         input_noise = torch.randn(I_s.shape[0], self.image_size, self.image_size, 1).type_as(z_s)
-        print("Forward Pass details: ", {"z_s_repeated": z_s.repeat(1, 5, 1).size(), "E_s": E_s.size(), "E_t": E_t.size(), "input_noise": input_noise.size()})
+        # print("GNet Forward Pass details: ", {"z_s_repeated": z_s.repeat(1, 5, 1).size(), "E_s": E_s.size(), "E_t": E_t.size(), "input_noise": input_noise.size()})
         
         #  Repeat z num_layer times
         I_dash_s = self.g_net.G(z_s.repeat(1, 5, 1), input_noise, E_s) #G(E_s, z_s)
@@ -96,7 +95,7 @@ class StylePoseGAN(pl.LightningModule):
             if not (os.path.isdir('./test_ims')):
                 os.mkdir('./test_ims')
             save_image(normalize(I_dash_s_to_t), f'./test_ims/step_{self.steps}.jpg')
-
+            print("Saved I_dash_s_to_t to test_ims dir.")
         # Consider normalizing:
         # I_s = normalize(I_s)
         # I_t = normalize(I_t)

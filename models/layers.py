@@ -1,5 +1,12 @@
 import torch.nn as nn
 
+
+"""
+Double checked by Madhav with http://d2l.ai/chapter_convolutional-modern/resnet.html from the D2L.ai book.
+We don't have the additional 1x1 conv layer used to change the number of channels. It helps us "transform the input into the 
+desired shape for the addition operation".
+"""
+
 class ResidualBlock(nn.Module):
     #this class defines a set of functions that comprise the residual block as specified by StylePoseGAN
     #notes:

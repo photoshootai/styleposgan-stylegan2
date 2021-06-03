@@ -634,7 +634,10 @@ class Generator(nn.Module):
             
             self.blocks.append(block)
         
-        #print("No of Gen Blocks created: ", len(self.blocks))
+        print("Generator Initialized with: ", {"image_size": self.image_size, "latent_dim": self.latent_dim, "num_blocks": len(self.blocks), 
+                "attn_layers" : [l.size() for l in self.attns if l is not None]
+        })
+
 
     #Added s_input as an additional argument to forward
     def forward(self, z_inputs, input_noise, s_input):
@@ -645,14 +648,11 @@ class Generator(nn.Module):
         #print("Batch size is " + str(batch_size))
         #print("Image size is " + str(image_size))
 
-        # if self.s_input is None:
-        #     avg_style = z_inputs.mean(dim=1)[:, :, None, None]
-        #     x = self.to_initial_block(avg_style)
-        # else:
         x = s_input
-        #print("s_input is: " + str(s_input.size()))
+        # print("s_input is: " + str(s_input.size()))
         rgb = None
-        z_inputs = z_inputs.transpose(0, 1)#Change (x, y, z) to (y, x, z)
+        # print("Z_inputs are: ", z_inputs.size())
+        z_inputs = z_inputs.transpose(0, 1) #Change (x, y, z) to (y, x, z)
 
         #print("Initial Conv Dims is: " + str(self.initial_conv))
         x = self.initial_conv(x)
@@ -669,7 +669,7 @@ class Generator(nn.Module):
                 # print("X dim after attention" + str(x.size()))
             x, rgb = block(x, rgb, z_input, input_noise)
 
-        # print(count)
+        # print(f"Generator forwarded through {count} blocks")
         return rgb
 
 class Discriminator(nn.Module):
@@ -716,8 +716,8 @@ class Discriminator(nn.Module):
 
     def forward(self, x):
         b, *_ = x.shape
-        print("Discriminator forward pass")
-        print("X shape is", x.size())
+        #print("Discriminator forward pass")
+        #print("X shape is", x.size())
         quantize_loss = torch.zeros(1).to(x)
 
         for (block, attn_block, q_block) in zip(self.blocks, self.attn_blocks, self.quantize_blocks):
@@ -737,8 +737,8 @@ class Discriminator(nn.Module):
         # print("to_logit is " + str(self.to_logit))
         x = self.to_logit(x)
 
-        print("X final output before squeezing is", x)
-        print("quantize_loss ", quantize_loss)
+        #print("X final output before squeezing is", x)
+        #print("quantize_loss ", quantize_loss)
         return x, quantize_loss #Earlier was squeezed, we changed to x.squeeze(), quantize_loss
 
 # class StyleGAN2(nn.Module): #We use this exact class definition with modifications as GNet.py
