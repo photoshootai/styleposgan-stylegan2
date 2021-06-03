@@ -48,7 +48,8 @@ def main(args):
     seed_everything(42, workers=True)
     
     #Init Train
-    trainer = Trainer(tpu_cores=args.tpu_cores, gpus=args.gpus, precision=args.precision, logger=logger, profiler="simple", progress_bar_refresh_rate=20)
+    trainer = Trainer(tpu_cores=args.tpu_cores, gpus=args.gpus, precision=args.precision, logger=logger, profiler="simple",
+                      progress_bar_refresh_rate=20, accelerator=args.accelerator, num_nodes=args.num_nodes)
 
     
     datamodule = DeepFashionDataModule(args.source_image_path, args.pose_map_path, args.texture_map_path, batch_size=args.batch_size, image_size=(args.image_size, args.image_size), num_workers=args.num_workers)
@@ -87,6 +88,8 @@ if __name__ == "__main__":
     parser.add_argument('--accumulate_grad_batches', type=int, default=32)
     parser.add_argument('--top_k_training', type=bool, default=False)
     parser.add_argument('--deterministic', type=bool, default=True)
+    parser.add_argument('--accelerator', type=str, default='ddp')
+    parser.add_argument('--num_nodes', type=int, default=1)
 
     args = parser.parse_args()
 
