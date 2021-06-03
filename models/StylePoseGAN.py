@@ -176,7 +176,30 @@ class StylePoseGAN(pl.LightningModule):
         # need to merge losses?
         l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g
 
+        
 
+        max_opt, min_opt = self.optimizers()
+
+        min_opt.zero_grad()
+        l_total = rec_loss_1 + rec_loss_2 +  gan_loss_1_g + gan_loss_2_g + gan_loss_1_d + gan_loss_2_d + patch_loss
+        self.manual_backward(l_total, retain_graph=True)
+        min_opt.step()
+        # min_opt.zero_grad()
+
+        for p in self.D.parameters():
+            if p.grad is not None:
+                p.grad = -1*p.grad
+
+        for p in self.d_patch.parameters():
+            if p.grad is not None:
+                p.grad = -1*p.grad  
+                     
+        # self.manual_backward(-l_total)
+        max_opt.zero_grad()
+        max_opt.step()
+        
+        self.log_dict({'l_total': l_total}, prog_bar=True)
+        return {'loss': l_total}
         named_losses = {
             'rl1': rec_loss_1,
             'rl2': rec_loss_2,
@@ -232,75 +255,75 @@ class StylePoseGAN(pl.LightningModule):
         self.log_dict({'generation_loss': l_total_to_min, 'disc_loss': l_total_to_max}, prog_bar=True)
         return  {'l_total_to_min': l_total_to_min, 'l_total_to_max': l_total_to_max, 'z_s': z_s, 'I_dash_s_to_t': I_dash_s_to_t}
 
-    def training_step_end(self, *losses, **kwargs):
-        # args = ({l_min, l_max, z_s, I_dash_s_to_t}, ...)
-        # do we need to combine and backward in here?
-        N = len(losses)
-        min_opt, max_opt = self.optimizers()
+    # def training_step_end(self, *losses, **kwargs):
+    #     # args = ({l_min, l_max, z_s, I_dash_s_to_t}, ...)
+    #     # do we need to combine and backward in here?
+    #     N = len(losses)
+    #     min_opt, max_opt = self.optimizers()
 
-        min_opt.zero_grad()
-        max_opt.zero_grad()
+    #     min_opt.zero_grad()
+    #     max_opt.zero_grad()
 
-        # Moving Averages
-        avg_pl_length = self.pl_mean
-        is_main = self.global_rank == 0
-        apply_path_penalty = self.pl_reg and self.steps > 5000 and self.steps % 32 == 0  # TODO: change condition to > 5000
+    #     # Moving Averages
+    #     avg_pl_length = self.pl_mean
+    #     is_main = self.global_rank == 0
+    #     apply_path_penalty = self.pl_reg and self.steps > 5000 and self.steps % 32 == 0  # TODO: change condition to > 5000
 
-        total_gen_loss = torch.zeros((1), device=self.device) 
-        total_disc_loss = torch.zeros((1), device=self.device)
+    #     total_gen_loss = torch.zeros((1), device=self.device) 
+    #     total_disc_loss = torch.zeros((1), device=self.device)
 
-        for loss_dict in losses:
-            gen_loss = loss_dict['l_total_to_min'] # assuming this is the generator loss (?)
-            disc_loss = loss_dict['l_total_to_max']
-            z_s = loss_dict['z_s']
-            I_dash_s_to_t = loss_dict['I_dash_s_to_t']
+    #     for loss_dict in losses:
+    #         gen_loss = loss_dict['l_total_to_min'] # assuming this is the generator loss (?)
+    #         disc_loss = loss_dict['l_total_to_max']
+    #         z_s = loss_dict['z_s']
+    #         I_dash_s_to_t = loss_dict['I_dash_s_to_t']
 
-            if apply_path_penalty:
-                # pl_lengths = calc_pl_lengths(w_styles, generated_images)
-                pl_lengths = calc_pl_lengths(z_s, I_dash_s_to_t)
-                avg_pl_length = torch.mean(pl_lengths.detach())  # scalar (rank-0 tensor)
+    #         if apply_path_penalty:
+    #             # pl_lengths = calc_pl_lengths(w_styles, generated_images)
+    #             pl_lengths = calc_pl_lengths(z_s, I_dash_s_to_t)
+    #             avg_pl_length = torch.mean(pl_lengths.detach())  # scalar (rank-0 tensor)
 
-                if not is_empty(self.pl_mean):  # checks if tensor is 0
-                    pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
-                    if not torch.isnan(pl_loss):
-                        gen_loss = gen_loss + pl_loss
+    #             if not is_empty(self.pl_mean):  # checks if tensor is 0
+    #                 pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
+    #                 if not torch.isnan(pl_loss):
+    #                     gen_loss = gen_loss + pl_loss
 
-            total_gen_loss += gen_loss
-            total_disc_loss += disc_loss
-            self.manual_backward(disc_loss, retain_graph=True)
-            self.manual_backward(gen_loss)
+    #         total_gen_loss += gen_loss
+    #         total_disc_loss += disc_loss
+    #         self.manual_backward(disc_loss, retain_graph=True)
+    #         self.manual_backward(gen_loss)
 
-        total_gen_loss = total_gen_loss / N
-        total_disc_loss = total_disc_loss / N
+    #     total_gen_loss = total_gen_loss / N
+    #     total_disc_loss = total_disc_loss / N
 
-        #TODO: I think this is incorrect: -Madhav.
-        max_opt.step()
-        min_opt.step()  # in lucidrains, optstep is after ema
+    #     #TODO: I think this is incorrect: -Madhav.
+    #     max_opt.step()
+    #     min_opt.step()  # in lucidrains, optstep is after ema
 
-        if apply_path_penalty and not torch.isnan(avg_pl_length):
-            # print('Applying path penalty')
-            self.pl_mean = self.pl_length_ma.update_average(self.pl_mean, avg_pl_length)
-            # self.track(self.pl_mean, 'PL')
+    #     if apply_path_penalty and not torch.isnan(avg_pl_length):
+    #         # print('Applying path penalty')
+    #         self.pl_mean = self.pl_length_ma.update_average(self.pl_mean, avg_pl_length)
+    #         # self.track(self.pl_mean, 'PL')
 
-        #EMA if on main thread
-        if is_main:
-            if self.steps % 10 == 0 and self.steps > 20000:
-                self.g_net.EMA()
+    #     #EMA if on main thread
+    #     if is_main:
+    #         if self.steps % 10 == 0 and self.steps > 20000:
+    #             self.g_net.EMA()
 
-            #Parameter Averaging
-            if self.steps <= 25000 and self.steps % 1000 == 2:
-                self.g_net.reset_parameter_averaging()
+    #         #Parameter Averaging
+    #         if self.steps <= 25000 and self.steps % 1000 == 2:
+    #             self.g_net.reset_parameter_averaging()
 
-        # save from NaN errors
-        if any(torch.isnan(l) for l in (total_gen_loss, total_disc_loss)):
-            print(f'NaN detected for generator or discriminator. Loading from checkpoint #{self.checkpoint_num}')
-            self.load(self.checkpoint_num)
-            raise NanException
+    #     # save from NaN errors
+    #     if any(torch.isnan(l) for l in (total_gen_loss, total_disc_loss)):
+    #         print(f'NaN detected for generator or discriminator. Loading from checkpoint #{self.checkpoint_num}')
+    #         self.load(self.checkpoint_num)
+    #         raise NanException
 
-        default_out = super().validation_step_end(*losses, **kwargs)
-        # print(default_out)
-        self.steps += 1
-        return {'total_gen_loss': total_gen_loss, 'total_disc_loss': total_disc_loss}
+    #     default_out = super().validation_step_end(*losses, **kwargs)
+    #     # print(default_out)
+    #     self.steps += 1
+    #     return {'total_gen_loss': total_gen_loss, 'total_disc_loss': total_disc_loss}
 
     #TODO check this
     def validation_step(self, batch, batch_idx):
@@ -342,7 +365,7 @@ class StylePoseGAN(pl.LightningModule):
         # D_opt = Adam(self.g_net.D.parameters(), lr=self.d_lr * self.ttur_mult, betas=(0.5, 0.9))
 
         param_to_min = list(self.a_net.parameters()) + list(self.p_net.parameters()) + list(self.g_net.G.parameters())
-        param_to_max = list(self.g_net.D.parameters()) #+ list(self.d_patch.parameters())
+        param_to_max = list(self.g_net.D.parameters()) + list(self.d_patch.parameters())
         min_opt = torch.optim.Adam(param_to_min, lr=self.g_lr, betas=(0.5, 0.9))
         max_opt = torch.optim.Adam(param_to_max, lr=self.d_lr, betas=(0.5, 0.9))
 
