@@ -149,57 +149,31 @@ class StylePoseGAN(pl.LightningModule):
         with the {ANet, PNet, GNet.G} being the "G" being minimized,
         and {D, DPatch} being the "D" being maximized
         """
-        #Get optimizers
-        # min_opt, max_opt = self.optimizers()
-
-        # min_opt.zero_grad()
-        # max_opt.zero_grad()
+        # Get optimizers
+        min_opt, max_opt = self.optimizers()
 
         (rec_loss_1, rec_loss_2, gan_loss_1_d, gan_loss_2_d, gan_loss_1_g,
          gan_loss_2_g, patch_loss, _ , I_dash_s_to_t, z_s) = self.compute_loss_components(batch)
 
+
         #Total Loss that needs to be maximized. The only GAN loss here is -[log(D(x)) + log(1-D(G(z)))] for the respective args
-        l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d + patch_loss
+        l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d + (-1)*patch_loss
 
-        # min_opt.zero_grad()
-        # l_total_to_min.backward(retain_graph=True)
-        # min_opt.step()
 
-        # max_opt.zero_grad()
-        # self.manual_backward(l_total_to_max, retain_graph=True)
-        # max_opt.step()
-        # gan_loss_1_g = gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug)
-        # gan_loss_2_g = gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug)
+        max_opt.zero_grad()
+        self.manual_backward(l_total_to_max, retain_graph=True)
+        max_opt.step()
+       
 
 
         #This is the total loss that needs to be minimized. The only GAN loss here is -log(D(G(z)) times two for the two reconstruction losses
         # need to merge losses?
-        l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g
-
-        
-
-        max_opt, min_opt = self.optimizers()
-
+        l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g + patch_loss
         min_opt.zero_grad()
-        l_total = rec_loss_1 + rec_loss_2 +  gan_loss_1_g + gan_loss_2_g + gan_loss_1_d + gan_loss_2_d + patch_loss
-        self.manual_backward(l_total, retain_graph=True)
+        self.manual_backward(l_total_to_min)
         min_opt.step()
-        # min_opt.zero_grad()
 
-        for p in self.D.parameters():
-            if p.grad is not None:
-                p.grad = -1*p.grad
 
-        for p in self.d_patch.parameters():
-            if p.grad is not None:
-                p.grad = -1*p.grad  
-                     
-        # self.manual_backward(-l_total)
-        max_opt.zero_grad()
-        max_opt.step()
-        
-        self.log_dict({'l_total': l_total}, prog_bar=True)
-        return {'loss': l_total}
         named_losses = {
             'rl1': rec_loss_1,
             'rl2': rec_loss_2,

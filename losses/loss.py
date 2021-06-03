@@ -35,9 +35,7 @@ def get_face_id_loss(generated, gt, face_id_loss_model, crop_size):
     return face_id_loss_model(generated, gt, crop_size)
 
 
-"""
-Don't know if we need these two below, but this basically define G and D's losses using BCE seperately, following the usual Pytorch tutorial
-"""
+
 def gan_d_loss(generated, real, G, D, D_aug, device, detach=True):
 
     #Training Discriminator
