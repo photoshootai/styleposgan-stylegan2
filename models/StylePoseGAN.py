@@ -164,8 +164,6 @@ class StylePoseGAN(pl.LightningModule):
         self.manual_backward(l_total_to_max, retain_graph=True)
         max_opt.step()
        
-
-
         #This is the total loss that needs to be minimized. The only GAN loss here is -log(D(G(z)) times two for the two reconstruction losses
         # need to merge losses?
         l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g + patch_loss
