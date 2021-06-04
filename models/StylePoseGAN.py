@@ -46,9 +46,9 @@ class StylePoseGAN(pl.LightningModule):
         # self.pl_length_ma = EMA(0.99)
 
         #Loss calculation models
-        self.vgg16_perceptual_model = VGG16Perceptual(requires_grad=False).eval()
-        self.face_id_loss = FaceIDLoss(self.mtcnn_crop_size, requires_grad = False, device=self.device).eval()
-        self.d_patch = DPatch().eval() # Needs to be on same device as data!
+        # self.vgg16_perceptual_model = VGG16Perceptual(requires_grad=False).eval()
+        # self.face_id_loss = FaceIDLoss(self.mtcnn_crop_size, requires_grad = False, device=self.device).eval()
+        # self.d_patch = DPatch().eval() # Needs to be on same device as data!
 
         #Disabling Pytorch lightning's default optimizer
         self.automatic_optimization = False
@@ -124,13 +124,13 @@ class StylePoseGAN(pl.LightningModule):
 
 
         #Loss not dependant on D and G, can be obtained before hand
-        rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) + \
-                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
-                      weight_face * get_face_id_loss(I_dash_s, I_s, self.face_id_loss, crop_size=self.mtcnn_crop_size)
+        rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) # + \
+                    #   weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
+                    #   weight_face * get_face_id_loss(I_dash_s, I_s, self.face_id_loss, crop_size=self.mtcnn_crop_size)
 
-        rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) + \
-                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
-                      weight_face * get_face_id_loss(I_dash_s_to_t, I_t, self.face_id_loss, crop_size=self.mtcnn_crop_size)
+        rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) # + \
+                    #   weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
+                    #   weight_face * get_face_id_loss(I_dash_s_to_t, I_t, self.face_id_loss, crop_size=self.mtcnn_crop_size)
         
 
         ########
@@ -140,10 +140,10 @@ class StylePoseGAN(pl.LightningModule):
         #Detaching generated when passing to Discriminators inside gan_d_loss
         gan_loss_1_d = weight_gan * gan_d_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
         gan_loss_2_d = weight_gan * gan_d_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
-        patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
+        # patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
 
        
-        l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d + (-1)*patch_loss
+        l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d #+ (-1)*patch_loss
 
         max_opt.zero_grad()
         self.manual_backward(l_total_to_max, retain_graph=True)
@@ -155,10 +155,10 @@ class StylePoseGAN(pl.LightningModule):
         #######
         gan_loss_1_g = weight_gan * gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device )
         gan_loss_2_g = weight_gan * gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
-        patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
+        # patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
 
         #This is the total loss that needs to be minimized. The only GAN loss here is -log(D(G(z)) times two for the two reconstruction losses
-        l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g + patch_loss
+        l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g #+ patch_loss
 
      
         min_opt.zero_grad()
@@ -172,7 +172,7 @@ class StylePoseGAN(pl.LightningModule):
             'gl2d': gan_loss_2_d,  # ^
             'gl1g': gan_loss_1_g,  # either very large numbers or 0
             'gl2g': gan_loss_2_g,  # ^
-            'pl': patch_loss
+            # 'pl': patch_loss
         }
 
         # print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in named_losses.items()) + "}")
@@ -235,17 +235,22 @@ class StylePoseGAN(pl.LightningModule):
 
     #     #EMA if on main thread
         self.log_dict({'generation_loss': l_total_to_min, 'disc_loss': l_total_to_max, **named_losses}, prog_bar=True)
-        return  {'l_total_to_min': l_total_to_min, 'l_total_to_max': l_total_to_max, 'I_dash_s': I_dash_s, 'I_dash_s_to_t': I_dash_s_to_t}
+        return  {'l_total_to_min': l_total_to_min, 'l_total_to_max': l_total_to_max}
+        
+        #Commented out 'I_dash_s': I_dash_s, 'I_dash_s_to_t': I_dash_s_to_t} from the above returned dictionary because:
 
-    def training_epoch_end(self, outputs):
-        steps = len(outputs)
-        generated_s_to_t = outputs[-1]['I_dash_s_to_t']
-        generated_s_dash = outputs[-1]['I_dash_s']
+        # "If you are returning the batch and predictions from training_step (or validation_step) they will be accumulated to be passed to training_step_end and validation_step_end respectively, 
+        # which could be causing the OOM errors"
 
-        if not (os.path.isdir('./test_ims')):
-            os.mkdir('./test_ims')
-        save_image(generated_s_to_t, f'./test_ims/s_to_t_step_{steps}.jpg')
-        save_image(generated_s_dash, f'./test_ims/s_dash_{steps}.jpg')
+    # def training_epoch_end(self, outputs):
+    #     steps = len(outputs)
+    #     generated_s_to_t = outputs[-1]['I_dash_s_to_t']
+    #     generated_s_dash = outputs[-1]['I_dash_s']
+
+    #     if not (os.path.isdir('./test_ims')):
+    #         os.mkdir('./test_ims')
+    #     save_image(generated_s_to_t, f'./test_ims/s_to_t_step_{steps}.jpg')
+    #     save_image(generated_s_dash, f'./test_ims/s_dash_{steps}.jpg')
         # print(f'Saved I_dash_s_to_t at step {steps} to test_ims dir.')
     
     #TODO check this
@@ -267,28 +272,28 @@ class StylePoseGAN(pl.LightningModule):
 
 
         #Loss not dependant on D and G, can be obtained before hand
-        rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) + \
-                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
-                      weight_face * get_face_id_loss(I_dash_s, I_s, self.face_id_loss, crop_size=self.mtcnn_crop_size)
+        rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) #+ \
+                      #weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
+                      #weight_face * get_face_id_loss(I_dash_s, I_s, self.face_id_loss, crop_size=self.mtcnn_crop_size)
 
-        rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) + \
-                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
-                      weight_face * get_face_id_loss(I_dash_s_to_t, I_t, self.face_id_loss, crop_size=self.mtcnn_crop_size)
+        rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t)# + \
+                    #   weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
+                    #   weight_face * get_face_id_loss(I_dash_s_to_t, I_t, self.face_id_loss, crop_size=self.mtcnn_crop_size)
         
 
         #Detaching generated when passing to Discriminators inside gan_d_loss
         gan_loss_1_d = weight_gan * gan_d_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
         gan_loss_2_d = weight_gan * gan_d_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
-        patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
+        #patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
 
-        l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d + (-1)*patch_loss
+        l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d# + (-1)*patch_loss
 
         gan_loss_1_g = weight_gan * gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device )
         gan_loss_2_g = weight_gan * gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
-        patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
+        #patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
 
         #This is the total loss that needs to be minimized. The only GAN loss here is -log(D(G(z)) times two for the two reconstruction losses
-        l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g + patch_loss
+        l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g #+ patch_loss
 
         return  {'l_total_to_min': l_total_to_min, 'l_total_to_max': l_total_to_max}
 
@@ -296,7 +301,7 @@ class StylePoseGAN(pl.LightningModule):
 
 
         param_to_min = list(self.a_net.parameters()) + list(self.p_net.parameters()) + list(self.g_net.G.parameters())
-        param_to_max = list(self.g_net.D.parameters()) + list(self.d_patch.parameters())
+        param_to_max = list(self.g_net.D.parameters()) #+ list(self.d_patch.parameters())
         min_opt = torch.optim.Adam(param_to_min, lr=self.g_lr, betas=(0.0, 0.99))
         max_opt = torch.optim.Adam(param_to_max, lr=self.d_lr, betas=(0.0, 0.99))
 

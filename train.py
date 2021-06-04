@@ -36,10 +36,9 @@ import gc
 
 def main(args):
  
-    #@ Kshitij- why do we need this?
-    # gc.collect()
+    gc.collect()
     torch.cuda.empty_cache()
-    torch.autograd.set_detect_anomaly(True)
+    # torch.autograd.set_detect_anomaly(True)
 
     #Logging
     logger = TensorBoardLogger('tb_logs', name='my_model')

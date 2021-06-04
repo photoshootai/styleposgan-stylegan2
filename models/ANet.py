@@ -43,7 +43,8 @@ class ANet(nn.Module):
         x = self.res_block4(x)
         x = self.last_block(x)
 
-        z = self.linear(x)
-        z = z.unsqueeze(dim=1) # to go from (batch_size, 2048) -> (batch_size, 1, 2048)
+        # 
+        x = self.linear(x)
+        z = x.unsqueeze(dim=1) # to go from (batch_size, 2048) -> (batch_size, 1, 2048)
     
         return z
