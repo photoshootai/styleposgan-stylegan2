@@ -42,8 +42,8 @@ def gan_d_loss(generated, real, G, D, D_aug, device, detach=True):
     G_requires_reals = False
     criterion = nn.BCEWithLogitsLoss()
 
-    fake_output, fake_q_loss = D_aug(generated, detach = detach)
-    real_output, real_q_loss = D_aug(real)
+    fake_output, fake_q_loss = D_aug(generated.detach(), detach = detach)
+    real_output, real_q_loss = D_aug(real) #D(X)
 
     batch_size = generated.shape[0]
 
@@ -54,12 +54,6 @@ def gan_d_loss(generated, real, G, D, D_aug, device, detach=True):
     disc_loss_fake = criterion(fake_output, fake_label)
 
     total_disc_loss = disc_loss_real + disc_loss_fake 
-    #TODO: Check this
-    # if args["epoch_id"] % 4== 0:
-    #     gp = gradient_penalty(image_batch, real_output)
-    #     last_gp_loss = gp.clone().detach().item()
-    #     #track(last_gp_loss, 'GP')
-    #     total_disc_loss = total_disc_loss + gd
 
     return total_disc_loss
 

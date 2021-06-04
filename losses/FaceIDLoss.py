@@ -9,7 +9,6 @@ class FaceIDLoss(nn.Module):
     def __init__(self, mtcnn_crop_size, weight=None, size_average= True, select_largest=True,  requires_grad=False, device=None):
         super(FaceIDLoss, self).__init__()
 
-        
         self.mtcnn = MTCNN(image_size=mtcnn_crop_size, select_largest=True).eval()
         self.resnet = InceptionResnetV1(pretrained='vggface2').eval()
 

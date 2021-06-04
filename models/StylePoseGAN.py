@@ -8,46 +8,42 @@ from torch import nn
 import torch.nn.functional as F
 from torchvision.utils import save_image
 from torchvision.datasets import MNIST
-from torch.utils.data import DataLoader, random_split
 import pytorch_lightning as pl
 
 
 from models import ANet, PNet, GNet
-
-
-#import helpers
-# from stylegan2 import exists, null_context, combine_contexts, default, cast_list, is_empty, raise_if_nan
-# #import training helpers
-# from stylegan2 import gradient_accumulate_contexts, loss_backwards, gradient_penalty, calc_pl_lengths
-# #import noise-related helper functions
-# from stylegan2 import noise, noise_list,
 from stylegan2 import *
 
-#Import losses
 
 from losses import get_face_id_loss, gan_g_loss, gan_d_loss, get_l1_loss, get_perceptual_vgg_loss, VGG16Perceptual, DPatch
 
 class StylePoseGAN(pl.LightningModule):
 
     def __init__(self, image_size, batch_size, g_lr=2e-3, d_lr=2e-3, ttur_mult=2, latent_dim=2048,
-                 network_capacity=16, attn_layers=(1, 2, 3, 4), mtcnn_crop_size=160, steps=0, pl_reg=True):  # changed attention to tuple since mutable default args cause problems
+                 network_capacity=16, attn_layers=(1, 2, 3, 4), mtcnn_crop_size=160, steps=0, pl_reg=True):  # changed attention from list to tuple since mutable default args cause problems
         super().__init__()
-        self.a_net = ANet(im_chan=3).train()
-        self.p_net = PNet(im_chan=3).train()
-        self.g_net = GNet(image_size=image_size, latent_dim=latent_dim).train() #Contains g_net.G, g_net.D, g_net.D_aug, g_net.S
 
         #Attributes
         self.d_lr = d_lr
         self.g_lr = g_lr
+        self.ttur_mult = ttur_mult
         self.image_size = image_size
         self.batch_size = batch_size
         self.latent_dim = latent_dim
+        self.network_capacity = network_capacity
+        self.attn_layers = attn_layers
         self.mtcnn_crop_size = mtcnn_crop_size
+    
+        self.a_net = ANet(im_chan=3).train()
+        self.p_net = PNet(im_chan=3).train()
+        self.g_net = GNet(image_size=image_size, latent_dim=latent_dim).train() #Contains g_net.G, g_net.D, g_net.D_aug, g_net.S
 
-        self.steps = steps
-        self.pl_reg = pl_reg
-        self.pl_mean = None #TODO: what should this be set to if at all
-        self.pl_length_ma = EMA(0.99)
+        #TODO: FEATURE
+        #Path Penalty related attrs.  
+        # self.steps = steps
+        # self.pl_reg = pl_reg
+        # self.pl_mean = None #TODO: what should this be set to if at all
+        # self.pl_length_ma = EMA(0.99)
 
         #Loss calculation models
         self.vgg16_perceptual_model = VGG16Perceptual(requires_grad=False).eval()
@@ -60,17 +56,11 @@ class StylePoseGAN(pl.LightningModule):
         print('Device Rank', self.global_rank)  # should be 0 on main, > 0 on other gpus/tpus/cpus
         print("StylePoseGAN module initialized with: ", {"image_size": self.image_size, "batch_size": self.batch_size, "latent_dim": self.latent_dim} )
 
-    def compute_loss_components(self, batch):
+    def get_forward_results(self, batch):
         """
         Separate repeated code from validation and training steps into different function for easier update/debugging
         """
 
-        # Weights
-        weight_l1 =1
-        weight_vgg = 1
-        weight_face = 1
-        weight_gan = 1
-        weight_patch = 1
 
         # normalize = lambda t: (t - torch.min(t)) / (torch.max(t) - torch.min(t))
 
@@ -90,42 +80,12 @@ class StylePoseGAN(pl.LightningModule):
         #  Repeat z num_layer times
         I_dash_s = self.g_net.G(z_s.repeat(1, 5, 1), input_noise, E_s) #G(E_s, z_s)
         I_dash_s_to_t = self.g_net.G(z_s.repeat(1, 5, 1), input_noise, E_t)
-        
-        # Consider normalizing:
-        # I_s = normalize(I_s)
-        # I_t = normalize(I_t)
-        # E_s = normalize(E_s)
-        # E_t = normalize(E_t)
-        # z_s = normalize(z_s)
-        # I_dash_s = normalize(I_dash_s)
-        # I_dash_s_to_t = normalize(I_dash_s_to_t)
-
-        #Need to detach at the top level
-        rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) + \
-                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
-                      weight_face * get_face_id_loss(I_dash_s, I_s, self.face_id_loss, crop_size=self.mtcnn_crop_size)
-
-        rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) + \
-                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
-                      weight_face * get_face_id_loss(I_dash_s_to_t, I_t, self.face_id_loss, crop_size=self.mtcnn_crop_size)
 
 
-        gan_loss_1_d = weight_gan * gan_d_loss(I_dash_s.detach(), I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
-        gan_loss_2_d = weight_gan * gan_d_loss(I_dash_s_to_t.detach(), I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
 
-        gan_loss_1_g = weight_gan * gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device )
-        gan_loss_2_g = weight_gan * gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
+        return (I_dash_s, I_dash_s_to_t, I_s, I_t)
+       
 
-        patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
-
-        return (rec_loss_1, rec_loss_2,
-                gan_loss_1_d, gan_loss_2_d,  # skyrockets, maybe we need to regulate?
-                gan_loss_1_g, gan_loss_2_g,  # flips between 0, and very large numbers
-                patch_loss,
-                I_dash_s, I_dash_s_to_t, z_s)
-
-        # return (1,1, 1,1, 1, 1, 1, I_s, I_t, z_s)
-    # training_step defined the train loop. # It is independent of forward
     def training_step(self, batch, batch_idx):
         """
         L_GAN has two parts:
@@ -144,26 +104,65 @@ class StylePoseGAN(pl.LightningModule):
         with the {ANet, PNet, GNet.G} being the "G" being minimized,
         and {D, DPatch} being the "D" being maximized
         """
+         #Total Loss that needs to be maximized. The only GAN loss here is -[log(D(x)) + log(1-D(G(z)))] for the respective args
+         # Weights
+        weight_l1 =1
+        weight_vgg = 1
+        weight_face = 1
+        weight_gan = 1
+        weight_patch = 1
+
+        # (rec_loss_1, rec_loss_2, gan_loss_1_d, gan_loss_2_d, gan_loss_1_g,
+        #  gan_loss_2_g, patch_loss, I_dash_s, I_dash_s_to_t, z_s) = self.compute_loss_components(batch)
+
+        (I_dash_s, I_dash_s_to_t, I_s, I_t) = self.get_forward_results(batch)
+
         # Get optimizers
         steps = batch_idx
         min_opt, max_opt = self.optimizers()
 
-        (rec_loss_1, rec_loss_2, gan_loss_1_d, gan_loss_2_d, gan_loss_1_g,
-         gan_loss_2_g, patch_loss, _ , I_dash_s_to_t, z_s) = self.compute_loss_components(batch)
 
 
-        #Total Loss that needs to be maximized. The only GAN loss here is -[log(D(x)) + log(1-D(G(z)))] for the respective args
+        #Loss not dependant on D and G, can be obtained before hand
+        rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) + \
+                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
+                      weight_face * get_face_id_loss(I_dash_s, I_s, self.face_id_loss, crop_size=self.mtcnn_crop_size)
+
+        rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) + \
+                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
+                      weight_face * get_face_id_loss(I_dash_s_to_t, I_t, self.face_id_loss, crop_size=self.mtcnn_crop_size)
+        
+
+        ########
+        #Optimizing D, DPatch
+        #######
+
+        #Detaching generated when passing to Discriminators inside gan_d_loss
+        gan_loss_1_d = weight_gan * gan_d_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
+        gan_loss_2_d = weight_gan * gan_d_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
+        patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
+
+       
         l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d + (-1)*patch_loss
+
+        max_opt.zero_grad()
+        self.manual_backward(l_total_to_max, retain_graph=True)
+        max_opt.step()
+
+
+        ########
+        #Optimizing G, A, P
+        #######
+        gan_loss_1_g = weight_gan * gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device )
+        gan_loss_2_g = weight_gan * gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
+        patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
+
         #This is the total loss that needs to be minimized. The only GAN loss here is -log(D(G(z)) times two for the two reconstruction losses
         l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g + patch_loss
 
-        max_opt.zero_grad()
+     
         min_opt.zero_grad()
-
-
-        self.manual_backward(l_total_to_max, retain_graph=True)
         self.manual_backward(l_total_to_min)
-        max_opt.step()
         min_opt.step()
        
         named_losses = {
@@ -178,12 +177,12 @@ class StylePoseGAN(pl.LightningModule):
 
         # print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in named_losses.items()) + "}")
         
-        if steps % 10 == 0 and steps > 20000:
-            self.g_net.EMA()
+        # if steps % 10 == 0 and steps > 20000:
+        #     self.g_net.EMA()
 
         #Parameter Averaging
-        if steps <= 25000 and steps % 1000 == 2:
-            self.g_net.reset_parameter_averaging()
+        # if steps <= 25000 and steps % 1000 == 2:
+        #     self.g_net.reset_parameter_averaging()
 
         # save from NaN errors
         if any(torch.isnan(l) for l in (l_total_to_min, l_total_to_max)):
@@ -192,7 +191,7 @@ class StylePoseGAN(pl.LightningModule):
             raise NanException
 
         # self.steps += 1
-        print('curr_step', steps, 'curr_batch', batch_idx)
+        # print('curr_step', steps, 'curr_batch', batch_idx)
         # Calculate Moving Averages
         # avg_pl_length = self.pl_mean
     #     is_main = self.global_rank == 0
@@ -235,63 +234,71 @@ class StylePoseGAN(pl.LightningModule):
     #         # self.track(self.pl_mean, 'PL')
 
     #     #EMA if on main thread
-        
-       
-
         self.log_dict({'generation_loss': l_total_to_min, 'disc_loss': l_total_to_max, **named_losses}, prog_bar=True)
-        return  {'l_total_to_min': l_total_to_min, 'l_total_to_max': l_total_to_max, 'z_s': z_s, 'I_dash_s_to_t': I_dash_s_to_t}
+        return  {'l_total_to_min': l_total_to_min, 'l_total_to_max': l_total_to_max, 'I_dash_s': I_dash_s, 'I_dash_s_to_t': I_dash_s_to_t}
 
     def training_epoch_end(self, outputs):
         steps = len(outputs)
-        generated = outputs[-1]['I_dash_s_to_t']
+        generated_s_to_t = outputs[-1]['I_dash_s_to_t']
+        generated_s_dash = outputs[-1]['I_dash_s']
+
         if not (os.path.isdir('./test_ims')):
             os.mkdir('./test_ims')
-        save_image(generated, f'./test_ims/step_{steps}.jpg')
-        print(f'Saved I_dash_s_to_t at step {steps} to test_ims dir.')
+        save_image(generated_s_to_t, f'./test_ims/s_to_t_step_{steps}.jpg')
+        save_image(generated_s_dash, f'./test_ims/s_dash_{steps}.jpg')
+        # print(f'Saved I_dash_s_to_t at step {steps} to test_ims dir.')
     
     #TODO check this
     def validation_step(self, batch, batch_idx):
-        """
-        L_GAN has two parts:
-        1. the D_loss=log(D(x)) + log(1-D(G(z))) which needs to maximized
-        2. the G_loss=log(D(G(z))) obtained from the -log(D) trick, which also needs to be maximized
+          # Weights
+        weight_l1 =1
+        weight_vgg = 1
+        weight_face = 1
+        weight_gan = 1
+        weight_patch = 1
 
-        The make two cases of the Loss_total:
-        One contains L_GAN = D_loss and that needs to be maximized w.r.t D and DPath
-        One contains L_GAN = G_loss that needs to be maximized w.r.t ANet, PNet and GNet.G
 
-        So basically:
-        D and DPatch maximize the total loss but with L_GAN as D_loss
-        ANet, PNet, and GNet.G minimize the total loss but with L_GAN as G_loss
+        (I_dash_s, I_dash_s_to_t, I_s, I_t) = self.get_forward_results(batch)
 
-        This makes StylePoseGAN conform to the traditional def. of a GAN
-        with the {ANet, PNet, GNet.G} being the "G" being minimized,
-        and {D, DPatch} being the "D" being maximized
-        """
+        # Get optimizers
+        steps = batch_idx
+        min_opt, max_opt = self.optimizers()
 
-        # print("DEVICE IN VAL STEP IS: ", self.device) #Assuming that by the time training_step is called, self.device points to the correct device
-        (rec_loss_1, rec_loss_2, gan_loss_1_d, gan_loss_2_d, gan_loss_1_g,
-         gan_loss_2_g, patch_loss, I_dash_s, I_dash_s_to_t, z_s) = self.compute_loss_components(batch)
 
+
+        #Loss not dependant on D and G, can be obtained before hand
+        rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) + \
+                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
+                      weight_face * get_face_id_loss(I_dash_s, I_s, self.face_id_loss, crop_size=self.mtcnn_crop_size)
+
+        rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) + \
+                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
+                      weight_face * get_face_id_loss(I_dash_s_to_t, I_t, self.face_id_loss, crop_size=self.mtcnn_crop_size)
+        
+
+        #Detaching generated when passing to Discriminators inside gan_d_loss
+        gan_loss_1_d = weight_gan * gan_d_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
+        gan_loss_2_d = weight_gan * gan_d_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
+        patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
+
+        l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d + (-1)*patch_loss
+
+        gan_loss_1_g = weight_gan * gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device )
+        gan_loss_2_g = weight_gan * gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
+        patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
 
         #This is the total loss that needs to be minimized. The only GAN loss here is -log(D(G(z)) times two for the two reconstruction losses
-        l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g
-
-       #Total Loss that needs to be maximized. The only GAN loss here is -[log(D(x)) + log(1-D(G(z)))] for the respective args
-        l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d + patch_loss
+        l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g + patch_loss
 
         return  {'l_total_to_min': l_total_to_min, 'l_total_to_max': l_total_to_max}
 
     def configure_optimizers(self):
 
-        # init optimizers
-        # G_opt = Adam(self.g_net.G.parameters(), lr=self.g_lr, betas=(0.5, 0.9))
-        # D_opt = Adam(self.g_net.D.parameters(), lr=self.d_lr * self.ttur_mult, betas=(0.5, 0.9))
 
         param_to_min = list(self.a_net.parameters()) + list(self.p_net.parameters()) + list(self.g_net.G.parameters())
         param_to_max = list(self.g_net.D.parameters()) + list(self.d_patch.parameters())
-        min_opt = torch.optim.Adam(param_to_min, lr=self.g_lr, betas=(0.5, 0.9))
-        max_opt = torch.optim.Adam(param_to_max, lr=self.d_lr, betas=(0.5, 0.9))
+        min_opt = torch.optim.Adam(param_to_min, lr=self.g_lr, betas=(0.0, 0.99))
+        max_opt = torch.optim.Adam(param_to_max, lr=self.d_lr, betas=(0.0, 0.99))
 
         #Can also do learning rate scheduling:
         #optimizers = [G_opt, D_opt]
@@ -300,11 +307,11 @@ class StylePoseGAN(pl.LightningModule):
 
         return min_opt, max_opt
 
-    @staticmethod
-    def add_model_specific_args(parent_parser):
-        parser = parent_parser.add_argument_group("StylePoseGAN")
-        parser.add_argument("--latent_dim", type=int, default=2048)
-        parser.add_argument("--network_capacity", type=int, default=16)
-        parser.add_argument("--attn_layers", type=list, default=[1,2, 3, 4])
+    # @staticmethod
+    # def add_model_specific_args(parent_parser):
+    #     parser = parent_parser.add_argument_group("StylePoseGAN")
+    #     parser.add_argument("--latent_dim", type=int, default=2048)
+    #     parser.add_argument("--network_capacity", type=int, default=16)
+    #     parser.add_argument("--attn_layers", type=list, default=[1,2, 3, 4])
 
-        return parent_parser
+    #     return parent_parser
