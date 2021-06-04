@@ -46,9 +46,9 @@ class StylePoseGAN(pl.LightningModule):
         # self.pl_length_ma = EMA(0.99)
 
         #Loss calculation models
-        # self.vgg16_perceptual_model = VGG16Perceptual(requires_grad=False).eval()
-        # self.face_id_loss = FaceIDLoss(self.mtcnn_crop_size, requires_grad = False, device=self.device).eval()
-        # self.d_patch = DPatch() # Needs to be on same device as data!
+        self.vgg16_perceptual_model = VGG16Perceptual(requires_grad=False).eval()
+        self.face_id_loss = FaceIDLoss(self.mtcnn_crop_size, requires_grad = False, device=self.device).eval()
+        self.d_patch = DPatch() # Needs to be on same device as data!
 
         #Disabling Pytorch lightning's default optimizer
         self.automatic_optimization = False
@@ -112,9 +112,6 @@ class StylePoseGAN(pl.LightningModule):
         weight_gan = 1
         weight_patch = 1
 
-        # (rec_loss_1, rec_loss_2, gan_loss_1_d, gan_loss_2_d, gan_loss_1_g,
-        #  gan_loss_2_g, patch_loss, I_dash_s, I_dash_s_to_t, z_s) = self.compute_loss_components(batch)
-
         (I_dash_s, I_dash_s_to_t, I_s, I_t) = self.get_forward_results(batch)
 
         # Get optimizers
@@ -124,13 +121,13 @@ class StylePoseGAN(pl.LightningModule):
 
 
         #Loss not dependant on D and G, can be obtained before hand
-        rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) # + \
-                    #   weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
-                    #   weight_face * get_face_id_loss(I_dash_s, I_s, self.face_id_loss, crop_size=self.mtcnn_crop_size)
+        rec_loss_1 =  weight_l1 * get_l1_loss(I_dash_s, I_s) + \
+                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model, I_dash_s, I_s) + \
+                      weight_face * get_face_id_loss(I_dash_s, I_s, self.face_id_loss, crop_size=self.mtcnn_crop_size)
 
-        rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) # + \
-                    #   weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
-                    #   weight_face * get_face_id_loss(I_dash_s_to_t, I_t, self.face_id_loss, crop_size=self.mtcnn_crop_size)
+        rec_loss_2 =  weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) + \
+                      weight_vgg * get_perceptual_vgg_loss(self.vgg16_perceptual_model,I_dash_s_to_t, I_t) + \
+                      weight_face * get_face_id_loss(I_dash_s_to_t, I_t, self.face_id_loss, crop_size=self.mtcnn_crop_size)
         
 
         ########
@@ -140,10 +137,10 @@ class StylePoseGAN(pl.LightningModule):
         #Detaching generated when passing to Discriminators inside gan_d_loss
         gan_loss_1_d = weight_gan * gan_d_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
         gan_loss_2_d = weight_gan * gan_d_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
-        # patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
+        patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
 
        
-        l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d #+ (-1)*patch_loss
+        l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d + (-1)*patch_loss
 
         max_opt.zero_grad()
         self.manual_backward(l_total_to_max, retain_graph=True)
@@ -155,10 +152,10 @@ class StylePoseGAN(pl.LightningModule):
         #######
         gan_loss_1_g = weight_gan * gan_g_loss(I_dash_s, I_s, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device )
         gan_loss_2_g = weight_gan * gan_g_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
-        # patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
+        patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
 
         #This is the total loss that needs to be minimized. The only GAN loss here is -log(D(G(z)) times two for the two reconstruction losses
-        l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g #+ patch_loss
+        l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g + patch_loss
 
      
         min_opt.zero_grad()
@@ -190,58 +187,14 @@ class StylePoseGAN(pl.LightningModule):
             self.load(self.checkpoint_num)
             raise NanException
 
-        # self.steps += 1
-        # print('curr_step', steps, 'curr_batch', batch_idx)
-        # Calculate Moving Averages
-        # avg_pl_length = self.pl_mean
-    #     is_main = self.global_rank == 0
-    #     apply_path_penalty = self.pl_reg and self.steps > 5000 and self.steps % 32 == 0  # TODO: change condition to > 5000
-
-    #     total_gen_loss = torch.zeros((1), device=self.device) 
-    #     total_disc_loss = torch.zeros((1), device=self.device)
-
-    #     for loss_dict in losses:
-    #         gen_loss = loss_dict['l_total_to_min'] # assuming this is the generator loss (?)
-    #         disc_loss = loss_dict['l_total_to_max']
-    #         z_s = loss_dict['z_s']
-    #         I_dash_s_to_t = loss_dict['I_dash_s_to_t']
-
-    #         if apply_path_penalty:
-    #             # pl_lengths = calc_pl_lengths(w_styles, generated_images)
-    #             pl_lengths = calc_pl_lengths(z_s, I_dash_s_to_t)
-    #             avg_pl_length = torch.mean(pl_lengths.detach())  # scalar (rank-0 tensor)
-
-    #             if not is_empty(self.pl_mean):  # checks if tensor is 0
-    #                 pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
-    #                 if not torch.isnan(pl_loss):
-    #                     gen_loss = gen_loss + pl_loss
-
-    #         total_gen_loss += gen_loss
-    #         total_disc_loss += disc_loss
-    #         self.manual_backward(disc_loss, retain_graph=True)
-    #         self.manual_backward(gen_loss)
-
-    #     total_gen_loss = total_gen_loss / N
-    #     total_disc_loss = total_disc_loss / N
-
-    #     #TODO: I think this is incorrect: -Madhav.
-    #     max_opt.step()
-    #     min_opt.step()  # in lucidrains, optstep is after ema
-
-    #     if apply_path_penalty and not torch.isnan(avg_pl_length):
-    #         # print('Applying path penalty')
-    #         self.pl_mean = self.pl_length_ma.update_average(self.pl_mean, avg_pl_length)
-    #         # self.track(self.pl_mean, 'PL')
-
-    #     #EMA if on main thread
         self.log_dict({'generation_loss': l_total_to_min, 'disc_loss': l_total_to_max, **named_losses}, prog_bar=True)
-        return  {'l_total_to_min': l_total_to_min, 'l_total_to_max': l_total_to_max}
-        
         #Commented out 'I_dash_s': I_dash_s, 'I_dash_s_to_t': I_dash_s_to_t} from the above returned dictionary because:
-
         # "If you are returning the batch and predictions from training_step (or validation_step) they will be accumulated to be passed to training_step_end and validation_step_end respectively, 
         # which could be causing the OOM errors"
 
+        return  {'l_total_to_min': l_total_to_min, 'l_total_to_max': l_total_to_max}
+        
+       
     # def training_epoch_end(self, outputs):
     #     steps = len(outputs)
     #     generated_s_to_t = outputs[-1]['I_dash_s_to_t']
@@ -311,12 +264,3 @@ class StylePoseGAN(pl.LightningModule):
         #return optimizers, lr_schedulers
 
         return min_opt, max_opt
-
-    # @staticmethod
-    # def add_model_specific_args(parent_parser):
-    #     parser = parent_parser.add_argument_group("StylePoseGAN")
-    #     parser.add_argument("--latent_dim", type=int, default=2048)
-    #     parser.add_argument("--network_capacity", type=int, default=16)
-    #     parser.add_argument("--attn_layers", type=list, default=[1,2, 3, 4])
-
-    #     return parent_parser
