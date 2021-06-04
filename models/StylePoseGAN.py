@@ -48,7 +48,7 @@ class StylePoseGAN(pl.LightningModule):
         #Loss calculation models
         # self.vgg16_perceptual_model = VGG16Perceptual(requires_grad=False).eval()
         # self.face_id_loss = FaceIDLoss(self.mtcnn_crop_size, requires_grad = False, device=self.device).eval()
-        # self.d_patch = DPatch().eval() # Needs to be on same device as data!
+        # self.d_patch = DPatch() # Needs to be on same device as data!
 
         #Disabling Pytorch lightning's default optimizer
         self.automatic_optimization = False
