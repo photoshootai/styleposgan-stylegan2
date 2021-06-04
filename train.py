@@ -47,7 +47,7 @@ def main(args):
     seed_everything(42, workers=True)
     
     #Init Train
-    trainer = Trainer(tpu_cores=args.tpu_cores, gpus=args.gpus, precision=args.precision, logger=logger, profiler="simple",
+    trainer = Trainer(tpu_cores=args.tpu_cores, gpus=args.gpus, precision=args.precision, logger=logger, profiler="advanced",
                       progress_bar_refresh_rate=20, accelerator=args.accelerator, num_nodes=args.num_nodes)
 
     
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     parser.add_argument('--accumulate_grad_batches', type=int, default=32)
     parser.add_argument('--top_k_training', type=bool, default=False)
     parser.add_argument('--deterministic', type=bool, default=True)
-    parser.add_argument('--accelerator', type=str, default='ddp')
+    parser.add_argument('--accelerator', type=str, default=None) #Use with GPUs not with TPUs
     parser.add_argument('--num_nodes', type=int, default=1)
 
     args = parser.parse_args()
