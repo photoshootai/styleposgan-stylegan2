@@ -53,6 +53,9 @@ class StylePoseGAN(pl.LightningModule):
         #Disabling Pytorch lightning's default optimizer
         self.automatic_optimization = False
 
+        #Log hyperparameters
+        self.save_hyperparameters()
+
         print('Device Rank', self.global_rank)  # should be 0 on main, > 0 on other gpus/tpus/cpus
         print("StylePoseGAN module initialized with: ", {"image_size": self.image_size, "batch_size": self.batch_size, "latent_dim": self.latent_dim} )
 
@@ -104,8 +107,8 @@ class StylePoseGAN(pl.LightningModule):
         with the {ANet, PNet, GNet.G} being the "G" being minimized,
         and {D, DPatch} being the "D" being maximized
         """
-         #Total Loss that needs to be maximized. The only GAN loss here is -[log(D(x)) + log(1-D(G(z)))] for the respective args
-         # Weights
+        #Total Loss that needs to be maximized. The only GAN loss here is -[log(D(x)) + log(1-D(G(z)))] for the respective args
+        # Weights
         weight_l1 =1
         weight_vgg = 1
         weight_face = 1
@@ -139,7 +142,6 @@ class StylePoseGAN(pl.LightningModule):
         gan_loss_2_d = weight_gan * gan_d_loss(I_dash_s_to_t, I_t, self.g_net.G, self.g_net.D, self.g_net.D_aug, self.device)
         patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, self.d_patch)
 
-       
         l_total_to_max = (-1)*rec_loss_1 + (-1)*rec_loss_2 + gan_loss_1_d + gan_loss_2_d + (-1)*patch_loss
 
         max_opt.zero_grad()
@@ -157,7 +159,6 @@ class StylePoseGAN(pl.LightningModule):
         #This is the total loss that needs to be minimized. The only GAN loss here is -log(D(G(z)) times two for the two reconstruction losses
         l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g + patch_loss
 
-     
         min_opt.zero_grad()
         self.manual_backward(l_total_to_min)
         min_opt.step()
@@ -187,12 +188,12 @@ class StylePoseGAN(pl.LightningModule):
             self.load(self.checkpoint_num)
             raise NanException
 
-        self.log_dict({'generation_loss': l_total_to_min, 'disc_loss': l_total_to_max, **named_losses}, prog_bar=True)
+        self.log_dict({'gen_loss': l_total_to_min, 'disc_loss': l_total_to_max, **named_losses}, prog_bar=True)
         #Commented out 'I_dash_s': I_dash_s, 'I_dash_s_to_t': I_dash_s_to_t} from the above returned dictionary because:
         # "If you are returning the batch and predictions from training_step (or validation_step) they will be accumulated to be passed to training_step_end and validation_step_end respectively, 
         # which could be causing the OOM errors"
 
-        return  {'l_total_to_min': l_total_to_min, 'l_total_to_max': l_total_to_max}
+        return  {'gen_loss': l_total_to_min, 'disc_loss': l_total_to_max}
         
        
     # def training_epoch_end(self, outputs):
@@ -248,7 +249,18 @@ class StylePoseGAN(pl.LightningModule):
         #This is the total loss that needs to be minimized. The only GAN loss here is -log(D(G(z)) times two for the two reconstruction losses
         l_total_to_min = rec_loss_1 + rec_loss_2 + gan_loss_1_g + gan_loss_2_g #+ patch_loss
 
-        return  {'l_total_to_min': l_total_to_min, 'l_total_to_max': l_total_to_max}
+        named_losses = {
+            'rl1': rec_loss_1,
+            'rl2': rec_loss_2,
+            'gl1d': gan_loss_1_d,  # huge numbers, grows very fast, needs scaling(?)
+            'gl2d': gan_loss_2_d,  # ^
+            'gl1g': gan_loss_1_g,  # either very large numbers or 0
+            'gl2g': gan_loss_2_g,  # ^
+            # 'pl': patch_loss
+        }
+        
+        self.log_dict({'gen_loss': l_total_to_min, 'disc_loss': l_total_to_max, **named_losses}, prog_bar=True)
+        return  {'gen_loss': l_total_to_min, 'disc_loss': l_total_to_max}
 
     def configure_optimizers(self):
 
