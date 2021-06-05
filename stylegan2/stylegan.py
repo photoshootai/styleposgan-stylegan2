@@ -253,7 +253,7 @@ def calc_pl_lengths(styles, images):
     return (pl_grads ** 2).sum(dim=2).mean(dim=1).sqrt()
 
 def noise(n, latent_dim, device):
-    return torch.randn(n, latent_dim).cuda(device)
+    return torch.randn(n, latent_dim).to(device)
 
 def noise_list(n, layers, latent_dim, device):
     return [(noise(n, latent_dim, device), layers)]
