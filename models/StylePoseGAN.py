@@ -53,14 +53,10 @@ class StylePoseGAN(pl.LightningModule):
         #Disabling Pytorch lightning's default optimizer
         self.automatic_optimization = False
 
-<<<<<<< HEAD
-        # print('Device Rank', self.global_rank)  # should be 0 on main, > 0 on other gpus/tpus/cpus
-=======
         #Log hyperparameters
         self.save_hyperparameters()
 
         print('Device Rank', self.global_rank)  # should be 0 on main, > 0 on other gpus/tpus/cpus
->>>>>>> dev
         print("StylePoseGAN module initialized with: ", {"image_size": self.image_size, "batch_size": self.batch_size, "latent_dim": self.latent_dim} )
 
     def get_forward_results(self, batch):
