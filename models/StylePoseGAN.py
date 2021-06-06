@@ -188,14 +188,13 @@ class StylePoseGAN(pl.LightningModule):
             self.load(self.checkpoint_num)
             raise NanException
 
-        self.log_dict({'gen_loss': l_total_to_min, 'disc_loss': l_total_to_max, **named_losses}, prog_bar=True)
+        self.log_dict({'gen_loss': l_total_to_min, 'disc_loss': l_total_to_max, **named_losses}, prog_bar=True, on_epoch=True)
         #Commented out 'I_dash_s': I_dash_s, 'I_dash_s_to_t': I_dash_s_to_t} from the above returned dictionary because:
         # "If you are returning the batch and predictions from training_step (or validation_step) they will be accumulated to be passed to training_step_end and validation_step_end respectively, 
         # which could be causing the OOM errors"
 
         return  {'gen_loss': l_total_to_min, 'disc_loss': l_total_to_max}
-        
-       
+          
     # def training_epoch_end(self, outputs):
     #     steps = len(outputs)
     #     generated_s_to_t = outputs[-1]['I_dash_s_to_t']
@@ -259,7 +258,7 @@ class StylePoseGAN(pl.LightningModule):
             # 'pl': patch_loss
         }
         
-        self.log_dict({'gen_loss': l_total_to_min, 'disc_loss': l_total_to_max, **named_losses}, prog_bar=True)
+        self.log_dict({'gen_loss': l_total_to_min, 'disc_loss': l_total_to_max, **named_losses}, prog_bar=True, on_epoch=True)
         return  {'gen_loss': l_total_to_min, 'disc_loss': l_total_to_max}
 
     def configure_optimizers(self):

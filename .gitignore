@@ -43,3 +43,4 @@ Thumbs.db
 tb_logs/
 /test_ims 
 /checkpoints
+/wandb

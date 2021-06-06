@@ -5,21 +5,15 @@ from numpy.core.numeric import True_
 import torch
 import torch.nn as nn
 
-
 import numpy as np
-# from stylegan import Generator, Discriminator, StyleGAN2
-# sys.path.append("./stylegan2-ada-pytorch")
 
 from torchvision import datasets, models, transforms     # vision datasets,
-# architectures &
-# transforms
 import torchvision.transforms as transforms              # composable transforms
 from torch.utils.data import DataLoader
 
 
 #Pytorch Lightning
 from pytorch_lightning import Trainer, seed_everything
-from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 
@@ -31,22 +25,14 @@ import gc
 import wandb
 
 
-# # RayTune
-# from ray import tune
-# from ray.tune import CLIReporter
-# from ray.tune.schedulers import ASHAScheduler
-
-
 def main(args):
  
     gc.collect()
     torch.cuda.empty_cache()
     # torch.autograd.set_detect_anomaly(True)
 
-    #Logging
-    logger = TensorBoardLogger('tb_logs', name='my_model')
-    # wandb.login()
-    # logger = WandbLogger(project='styleposegan', log_model='all')
+    wandb.login()
+    logger = WandbLogger(project='styleposegan', log_model='all')
 
     #For reporducibility: deterministic = True and next line
     seed_everything(42, workers=True)
@@ -69,7 +55,7 @@ def main(args):
     model = StylePoseGAN(args.image_size, batch_size=args.batch_size)
     
     #Log Gradients and model topology
-    # logger.watch(model)
+    logger.watch(model)
 
     #trainer.fit(model, train_loader)
     trainer.fit(model, datamodule)
@@ -77,18 +63,10 @@ def main(args):
 
     print("***Finished Training***")
 
-    #Test set evaluation
-    #trainer.test(test_dataloaders=test_dataloaders)
     
 if __name__ == "__main__":
     # You can change the number of GPUs per trial here:
     parser = ArgumentParser()
-
-    #Program args
-    
-
-    #Model Specific Args: hparams specific to models
-    #parser = StylePoseGAN.add_model_specific_args(parser)
 
     #Trainer Args
     parser.add_argument('--source_image_path', type=str, default="./data/TrainingData/SourceImages")
