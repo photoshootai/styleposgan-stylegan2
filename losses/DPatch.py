@@ -1,6 +1,5 @@
 import torch
 
-import numpy as np
 
 # USE L1 LOSS ON OUTPUTS
 class DPatch(torch.nn.Module):

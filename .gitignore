@@ -38,18 +38,9 @@ Thumbs.db
 #VSCode
 .vscode/
 
-
+#Styleposegan specific
 /data
-
 tb_logs/
-
-<<<<<<< HEAD
 /test_ims 
-=======
-#Project Specific
-data/
-data_down/
-tb_logs/
-
-.pytest_cache/
->>>>>>> testing
+/checkpoints
+/wandb

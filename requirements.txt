@@ -87,7 +87,7 @@ tqdm
 typing-extensions
 urllib3
 vector-quantize-pytorch==0.1.0
-wandb==0.10.30
+wandb
 Werkzeug
 yarl
 zipp
