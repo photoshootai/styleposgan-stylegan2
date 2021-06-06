@@ -52,10 +52,11 @@ class DeepFashionDataset(Dataset):
 
     #os.walk will return three values: the location it was given, root, the dirs 
     #inside that location and the files in the location
-    for root, dirs, files in os.walk(self.img_path):
-
-        #this will take the last part of the file's location (which is just its name)
-        self.data_id = [file_path.split("/")[-1] for file_path in files]
+    self.data_id = [d.name for d in os.scandir(self.img_path)]
+    # for d_entry in os.scandir(self.img_path):
+    #     file_
+    #     #this will take the last part of the file's location (which is just its name)
+    #     self.data_id = [file_path.split("/")[-1] for file_path in files]
 
     #define how the data should be categorized
     self.class_map = {"source_img" : 0, "pose_map": 1, "texture_map": 2} 
