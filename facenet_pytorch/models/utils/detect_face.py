@@ -23,11 +23,11 @@ def fixed_batch_process(im_data, model):
     return tuple(torch.cat(v, dim=0) for v in zip(*out))
 
 def detect_face(imgs, minsize, pnet, rnet, onet, threshold, factor):
-    if isinstance(imgs, (np.ndarray, torch.Tensor)): # should always be the case
+    if isinstance(imgs, (np.ndarray, torch.Tensor)):
         if isinstance(imgs,np.ndarray):
             imgs = torch.as_tensor(imgs.copy())
 
-        if isinstance(imgs,torch.Tensor):
+        if isinstance(imgs, torch.Tensor):  # should always run
             imgs = torch.as_tensor(imgs)
 
         if len(imgs.shape) == 3:
@@ -50,7 +50,7 @@ def detect_face(imgs, minsize, pnet, rnet, onet, threshold, factor):
     m = 12.0 / minsize
     minl = min(h, w)
     minl = minl * m
-
+    
     # Create scale pyramid
     scale_i = m
     scales = []
@@ -59,10 +59,10 @@ def detect_face(imgs, minsize, pnet, rnet, onet, threshold, factor):
         scale_i = scale_i * factor
         minl = minl * factor
 
+    # print(f'h, w: {h, w}, m: {m}, minl: {minl}, scales: {scales}')
     # First stage
     boxes = []
     image_inds = []
-
     scale_picks = []
 
     all_i = 0
@@ -82,16 +82,22 @@ def detect_face(imgs, minsize, pnet, rnet, onet, threshold, factor):
 
     boxes = torch.cat(boxes, dim=0)
     image_inds = torch.cat(image_inds, dim=0)
-
     scale_picks = torch.cat(scale_picks, dim=0)
 
     # NMS within each scale + image
-    boxes, image_inds = boxes[scale_picks], image_inds[scale_picks]
+    # print('boxes:', boxes)
+    # print('image_inds', image_inds)
+    # print('scale_picks', scale_picks)
+    if scale_picks.numel() != 0: # added for indexing issues on next lines
+        boxes = boxes[scale_picks]
+        image_inds = image_inds[scale_picks]
 
 
     # NMS within each image
     pick = batched_nms(boxes[:, :4], boxes[:, 4], image_inds, 0.7)
-    boxes, image_inds = boxes[pick], image_inds[pick]
+    if pick.numel() != 0: # added for indexing issues on next lines
+        boxes =  boxes[pick]
+        image_inds = image_inds[pick]
 
     regw = boxes[:, 2] - boxes[:, 0]
     regh = boxes[:, 3] - boxes[:, 1]
@@ -170,15 +176,16 @@ def detect_face(imgs, minsize, pnet, rnet, onet, threshold, factor):
 
     # boxes = boxes.cpu().numpy()
     # points = points.cpu().numpy()
-
     # image_inds = image_inds.cpu()
 
     batch_boxes = []
     batch_points = []
     for b_i in range(batch_size):
         b_i_inds = torch.where(image_inds == b_i)
-        batch_boxes.append(boxes[b_i_inds].clone())  # changed from boxes[b_i_inds].copy()
-        batch_points.append(points[b_i_inds].clone())  # changed from points[b_i_inds].copy() 
+        if boxes.numel() != 0:  # added for indexing issues on next line
+            batch_boxes.append(boxes[b_i_inds].clone())  # changed from boxes[b_i_inds].copy()
+        if points.numel() != 0: # added for indexing issues on next line
+            batch_points.append(points[b_i_inds].clone())  # changed from points[b_i_inds].copy() 
 
     # batch_boxes, batch_points = np.array(batch_boxes), np.array(batch_points)
 

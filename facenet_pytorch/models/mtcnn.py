@@ -309,9 +309,13 @@ class MTCNN(nn.Module):
 
         with torch.no_grad():
             batch_boxes, batch_points = detect_face(
-                img, self.min_face_size,
-                self.pnet, self.rnet, self.onet,
-                self.thresholds, self.factor
+                img,
+                self.min_face_size,
+                self.pnet,
+                self.rnet,
+                self.onet,
+                self.thresholds,
+                self.factor
                 # img.device   #the device is being used further down in detect(), etc. Easiest way to ensure device agnositic behaviour is to take the device from the input img
             )
 
