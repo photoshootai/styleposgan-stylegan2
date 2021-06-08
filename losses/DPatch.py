@@ -1,6 +1,5 @@
 import torch
 
-import numpy as np
 
 # USE L1 LOSS ON OUTPUTS
 class DPatch(torch.nn.Module):
@@ -18,7 +17,7 @@ class DPatch(torch.nn.Module):
         
         ReLU_slope = 0.2
         kernel_size, stride = 4, 2
-        pad_size = int(np.ceil((kernel_size - 1.0) / 2))
+        pad_size = int(torch.ceil(torch.tensor(kernel_size - 1.0) / 2))
         sequence = [
             torch.nn.Conv2d(input_channels, n_final_layer_filters, kernel_size=kernel_size, stride=stride, padding=pad_size),
             torch.nn.LeakyReLU(ReLU_slope, True)

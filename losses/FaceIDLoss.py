@@ -4,7 +4,6 @@ from facenet_pytorch import MTCNN, InceptionResnetV1
 
 import numpy as np
 
-
 class FaceIDLoss(nn.Module):
     def __init__(self, mtcnn_crop_size, weight=None, size_average= True, select_largest=True,  requires_grad=False, device=None):
         super(FaceIDLoss, self).__init__()

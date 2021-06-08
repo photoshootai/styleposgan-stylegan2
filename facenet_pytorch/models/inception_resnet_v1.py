@@ -264,10 +264,10 @@ class InceptionResnetV1(nn.Module):
         if self.classify and self.num_classes is not None:
             self.logits = nn.Linear(512, self.num_classes)
 
-        self.device = torch.device('cpu')
-        if device is not None:
-            self.device = device
-            self.to(device)
+        # self.device = torch.device('cpu')
+        # if device is not None:
+        #     self.device = device
+        #     self.to(device)
 
     def forward(self, x):
         """Calculate embeddings or logits given a batch of input image tensors.

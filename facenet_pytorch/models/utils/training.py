@@ -62,7 +62,7 @@ def accuracy(logits, y):
 def pass_epoch(
     model, loss_fn, loader, optimizer=None, scheduler=None,
     batch_metrics={'time': BatchTimer()}, show_running=True,
-    device='cpu', writer=None
+    device=None, writer=None
 ):
     """Train or evaluate over a data epoch.
     
@@ -93,8 +93,8 @@ def pass_epoch(
     metrics = {}
 
     for i_batch, (x, y) in enumerate(loader):
-        x = x.to(device)
-        y = y.to(device)
+        x = x
+        y = y
         y_pred = model(x)
         loss_batch = loss_fn(y_pred, y)
 
@@ -105,17 +105,17 @@ def pass_epoch(
 
         metrics_batch = {}
         for metric_name, metric_fn in batch_metrics.items():
-            metrics_batch[metric_name] = metric_fn(y_pred, y).detach().cpu()
+            metrics_batch[metric_name] = metric_fn(y_pred, y).detach()
             metrics[metric_name] = metrics.get(metric_name, 0) + metrics_batch[metric_name]
             
         if writer is not None and model.training:
             if writer.iteration % writer.interval == 0:
-                writer.add_scalars('loss', {mode: loss_batch.detach().cpu()}, writer.iteration)
+                writer.add_scalars('loss', {mode: loss_batch.detach()}, writer.iteration)
                 for metric_name, metric_batch in metrics_batch.items():
                     writer.add_scalars(metric_name, {mode: metric_batch}, writer.iteration)
             writer.iteration += 1
         
-        loss_batch = loss_batch.detach().cpu()
+        loss_batch = loss_batch.detach()
         loss += loss_batch
         if show_running:
             logger(loss, metrics, i_batch)
