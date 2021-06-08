@@ -22,8 +22,10 @@ from datasets import DeepFashionDataModule
 from models.StylePoseGAN import StylePoseGAN
 
 import gc
-import wandb
 
+#WandB
+import wandb
+from utils import WandbImageCallback
 
 def main(args):
  
@@ -44,15 +46,27 @@ def main(args):
         filename='gan-img-{epoch}-g-{gen_loss:.3f}-d-{disc_loss: .3f}', #Saved filename format
         every_n_val_epochs=1 #Save every 10 epochs
     )
-    
-    #Init Train
-    trainer = Trainer(tpu_cores=args.tpu_cores, gpus=args.gpus, precision=args.precision, logger=logger, profiler="advanced",
-                      progress_bar_refresh_rate=20, accelerator=args.accelerator, num_nodes=args.num_nodes, resume_from_checkpoint=args.resume_from_checkpoint,
-                      callbacks=[checkpoint_callback], fast_dev_run=args.fast_dev_run)
 
+    #
     
     datamodule = DeepFashionDataModule(args.source_image_path, args.pose_map_path, args.texture_map_path, batch_size=args.batch_size, image_size=(args.image_size, args.image_size), num_workers=args.num_workers)
+
+    #Setting up data samples for logging genarated images 
+    datamodule.prepare_data()
+    datamodule.setup()
+
+    val_samples = next(iter(datamodule.val_dataloader()))
+
+
+    generated_imgs_callback = WandbImageCallback(val_samples)
+
     model = StylePoseGAN(args.image_size, batch_size=args.batch_size)
+   
+
+    #Init Trainer
+    trainer = Trainer(tpu_cores=args.tpu_cores, gpus=args.gpus, precision=args.precision, logger=logger, profiler="advanced",
+                      progress_bar_refresh_rate=20, accelerator=args.accelerator, num_nodes=args.num_nodes, resume_from_checkpoint=args.resume_from_checkpoint,
+                      callbacks=[checkpoint_callback, generated_imgs_callback], fast_dev_run=args.fast_dev_run) 
     
     #Log Gradients and model topology
     logger.watch(model)
