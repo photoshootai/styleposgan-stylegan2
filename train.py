@@ -90,10 +90,10 @@ if __name__ == "__main__":
     parser.add_argument('--num_workers', type=int, default=2)
     parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('--gpus', default=None)
-    parser.add_argument('--image_size', type=int, default=512)
+    parser.add_argument('--image_size', type=int, default=256)
     parser.add_argument('--tpu_cores', type=int, default=None)
     parser.add_argument('--precision', type=int, default=32)
-    parser.add_argument('--accumulate_grad_batches', type=int, default=32)
+    parser.add_argument('--accumulate_grad_batches', type=int, default=1)
     parser.add_argument('--top_k_training', type=bool, default=False)
     parser.add_argument('--deterministic', type=bool, default=True)
     parser.add_argument('--accelerator', type=str, default=None) #Use with GPUs not with TPUs
