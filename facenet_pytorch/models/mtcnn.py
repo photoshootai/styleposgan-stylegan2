@@ -309,22 +309,26 @@ class MTCNN(nn.Module):
 
         with torch.no_grad():
             batch_boxes, batch_points = detect_face(
-                img, self.min_face_size,
-                self.pnet, self.rnet, self.onet,
-                self.thresholds, self.factor,
-                img.device   #the device is being used further down in detect(), etc. Easiest way to ensure device agnositic behaviour is to take the device from the input img
+                img,
+                self.min_face_size,
+                self.pnet,
+                self.rnet,
+                self.onet,
+                self.thresholds,
+                self.factor
+                # img.device   #the device is being used further down in detect(), etc. Easiest way to ensure device agnositic behaviour is to take the device from the input img
             )
 
         boxes, probs, points = [], [], []
         for box, point in zip(batch_boxes, batch_points):
-            box = np.array(box)
-            point = np.array(point)
+            # box = np.array(box)  # we dont want numpy!
+            # point = np.array(point)
             if len(box) == 0:
                 boxes.append(None)
                 probs.append([None])
                 points.append(None)
             elif self.select_largest:
-                box_order = np.argsort((box[:, 2] - box[:, 0]) * (box[:, 3] - box[:, 1]))[::-1]
+                box_order = torch.argsort((box[:, 2] - box[:, 0]) * (box[:, 3] - box[:, 1]))[::-1]  # was numpy.argsort
                 box = box[box_order]
                 point = point[box_order]
                 boxes.append(box[:, :4])
@@ -334,9 +338,9 @@ class MTCNN(nn.Module):
                 boxes.append(box[:, :4])
                 probs.append(box[:, 4])
                 points.append(point)
-        boxes = np.array(boxes)
-        probs = np.array(probs)
-        points = np.array(points)
+        boxes = torch.tensor(boxes)# np.array(boxes)
+        probs = torch.tensor(probs)# np.array(probs)
+        points = torch.tensor(points)# np.array(points)
 
         if (
             not isinstance(img, (list, tuple)) and 
@@ -406,25 +410,25 @@ class MTCNN(nn.Module):
                 continue
             
             # If at least 1 box found
-            boxes = np.array(boxes)
-            probs = np.array(probs)
-            points = np.array(points)
-                
+            boxes = torch.tensor(boxes)# np.array(boxes)
+            probs = torch.tensor(probs)# np.array(probs)
+            points = torch.tensor(points)# np.array(points)
+        
             if method == 'largest':
-                box_order = np.argsort((boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1]))[::-1]
+                box_order = torch.argsort((boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1]))[::-1]  # np.argsort
             elif method == 'probability':
-                box_order = np.argsort(probs)[::-1]
+                box_order = torch.argsort(probs)[::-1] # np.argsort
             elif method == 'center_weighted_size':
                 box_sizes = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
                 img_center = (img.width / 2, img.height/2)
-                box_centers = np.array(list(zip((boxes[:, 0] + boxes[:, 2]) / 2, (boxes[:, 1] + boxes[:, 3]) / 2)))
+                box_centers = torch.tensor(list(zip((boxes[:, 0] + boxes[:, 2]) / 2, (boxes[:, 1] + boxes[:, 3]) / 2)))
                 offsets = box_centers - img_center
-                offset_dist_squared = np.sum(np.power(offsets, 2.0), 1)
-                box_order = np.argsort(box_sizes - offset_dist_squared * center_weight)[::-1]
+                offset_dist_squared = torch.sum(torch.pow(offsets, 2.0), 1)  # np.sum and np.power 
+                box_order = torch.argsort(box_sizes - offset_dist_squared * center_weight)[::-1]  # np.argsort
             elif method == 'largest_over_threshold':
                 box_mask = probs > threshold
                 boxes = boxes[box_mask]
-                box_order = np.argsort((boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1]))[::-1]
+                box_order = torch.argsort((boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1]))[::-1]  # np.argsort
                 if sum(box_mask) == 0:
                     selected_boxes.append(None)
                     selected_probs.append([None])
@@ -439,9 +443,9 @@ class MTCNN(nn.Module):
             selected_points.append(point)
 
         if batch_mode:
-            selected_boxes = np.array(selected_boxes)
-            selected_probs = np.array(selected_probs)
-            selected_points = np.array(selected_points)
+            selected_boxes = torch.tensor(selected_boxes)# np.array(selected_boxes)
+            selected_probs = torch.tensor(selected_probs)# np.array(selected_probs)
+            selected_points = torch.tensor(selected_points)# np.array(selected_points)
         else:
             selected_boxes = selected_boxes[0]
             selected_probs = selected_probs[0][0]
