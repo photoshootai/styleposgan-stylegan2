@@ -55,10 +55,8 @@ class StylePoseGAN(pl.LightningModule):
         weight_gan = 1
         weight_patch = 1
 
-
-        #Get Data from batch
-        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map, _) = batch #x, y = batch, so x is  the tuple, and y is the triplet
-
+        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = batch #x, y = batch, so x is  the tuple, and y is the triplet
+        
         # PNet
         E_s = self.p_net(S_pose_map)
         E_t = self.p_net(T_pose_map)

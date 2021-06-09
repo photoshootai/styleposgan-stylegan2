@@ -91,7 +91,7 @@ class DeepFashionDataset(Dataset):
     full_pose_path2 = os.path.join(self.pose_path, id2)
 
     full_texture_path1 = os.path.join(self.texture_path, id1)
-    full_texture_path2 = os.path.join(self.texture_path, id2)
+    # full_texture_path2 = os.path.join(self.texture_path, id2)
 
     #read in the source images (including pose and texture), convert to torch 
     source_img = Image.open(full_image_path1) 
@@ -101,12 +101,12 @@ class DeepFashionDataset(Dataset):
     #read in the target images (including pose and texture), convert to torch 
     target_img = Image.open(full_image_path2)
     target_pose = Image.open(full_pose_path2)
-    target_texture = Image.open(full_texture_path2)
+    # target_texture = Image.open(full_texture_path2)
 
     #put them together
     # print('source_pose size pre-transform', source_pose.size)
     source_datapoint = (self.img_transform(source_img), self.img_transform(source_pose), self.texture_transform(source_texture))
-    target_datapoint = (self.img_transform(target_img), self.img_transform(target_pose), self.texture_transform(target_texture))
+    target_datapoint = (self.img_transform(target_img), self.img_transform(target_pose))
     # print('source_pose size post-transform', source_datapoint[1].shape)
     return source_datapoint, target_datapoint
 
