@@ -1,15 +1,6 @@
 from argparse import ArgumentParser
-from itertools import accumulate
-
-from numpy.core.numeric import True_
 import torch
-import torch.nn as nn
 
-import numpy as np
-
-from torchvision import datasets, models, transforms     # vision datasets,
-import torchvision.transforms as transforms              # composable transforms
-from torch.utils.data import DataLoader
 
 
 #Pytorch Lightning
@@ -46,26 +37,15 @@ def main(args):
         filename='gan-img-{epoch}-g-{gen_loss:.3f}-d-{disc_loss: .3f}', #Saved filename format
         every_n_val_epochs=1 #Save every 10 epochs
     )
-
-    #
     
     datamodule = DeepFashionDataModule(args.source_image_path, args.pose_map_path, args.texture_map_path, batch_size=args.batch_size, image_size=(args.image_size, args.image_size), num_workers=args.num_workers)
-
-    #Setting up data samples for logging genarated images 
-    # datamodule.prepare_data()
-    # datamodule.setup()
-
-    # # val_samples = next(iter(datamodule.val_dataloader()))
-
-
-    # # generated_imgs_callback = WandbImageCallback(val_samples)
 
     model = StylePoseGAN(args.image_size, batch_size=args.batch_size)
    
 
     #Init Trainer
     trainer = Trainer(tpu_cores=args.tpu_cores, gpus=args.gpus, precision=args.precision, logger=logger, profiler="advanced",
-                      progress_bar_refresh_rate=20, accelerator=args.accelerator, num_nodes=args.num_nodes, resume_from_checkpoint=args.resume_from_checkpoint,
+                      progress_bar_refresh_rate=20, resume_from_checkpoint=args.resume_from_checkpoint,
                       callbacks=[checkpoint_callback], fast_dev_run=args.fast_dev_run) 
     
     #Log Gradients and model topology
@@ -79,7 +59,7 @@ def main(args):
 
     
 if __name__ == "__main__":
-    # You can change the number of GPUs per trial here:
+
     parser = ArgumentParser()
 
     #Trainer Args
@@ -96,8 +76,6 @@ if __name__ == "__main__":
     parser.add_argument('--accumulate_grad_batches', type=int, default=1)
     parser.add_argument('--top_k_training', type=bool, default=False)
     parser.add_argument('--deterministic', type=bool, default=True)
-    parser.add_argument('--accelerator', type=str, default=None) #Use with GPUs not with TPUs
-    parser.add_argument('--num_nodes', type=int, default=1)
     parser.add_argument('--checkpoints_path', type=str, default="./checkpoints/")
     parser.add_argument('--resume_from_checkpoint', type=str, default=None)
     parser.add_argument('--fast_dev_run', type=bool, default=False)
