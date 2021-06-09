@@ -67,7 +67,7 @@ class StylePoseGAN(pl.LightningModule):
 
         # normalize = lambda t: (t - torch.min(t)) / (torch.max(t) - torch.min(t))
 
-        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map, _) = batch #x, y = batch, so x is  the tuple, and y is the triplet
+        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = batch #x, y = batch, so x is  the tuple, and y is the triplet
 
         # PNet
         E_s = self.p_net(S_pose_map)
