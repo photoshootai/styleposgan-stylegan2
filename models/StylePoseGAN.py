@@ -115,7 +115,7 @@ class StylePoseGAN(pl.LightningModule):
     def configure_optimizers(self):
 
         param_to_min = list(self.a_net.parameters()) + list(self.p_net.parameters()) + list(self.g_net.G.parameters())
-        param_to_max = list(self.g_net.D.parameters()) #+ list(self.d_patch.parameters())
+        param_to_max = list(self.g_net.D.parameters()) + list(self.d_patch.parameters())
         min_opt = torch.optim.Adam(param_to_min, lr=self.g_lr, betas=(0.0, 0.99))
         max_opt = torch.optim.Adam(param_to_max, lr=self.d_lr, betas=(0.0, 0.99))
 
