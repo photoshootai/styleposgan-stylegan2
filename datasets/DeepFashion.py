@@ -1,50 +1,77 @@
 import torch
+import torch.nn as nn
 import os, random
-#import cv2
 
-import numpy as np
-import pytorch_lightning as pl
 from torchvision import transforms
 
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset
 from functools import partial
 
 from PIL import Image
+
+def exists(val):
+    return val is not None
+
+def convert_rgb_to_transparent(image):
+    if image.mode != 'RGBA':
+        return image.convert('RGBA')
+    return image
+
+def convert_transparent_to_rgb(image):
+    if image.mode != 'RGB':
+        return image.convert('RGB')
+    return image
+
+class expand_greyscale(object):
+    def __init__(self, transparent):
+        self.transparent = transparent
+
+    def __call__(self, tensor):
+        channels = tensor.shape[0]
+        num_target_channels = 4 if self.transparent else 3
+
+        if channels == num_target_channels:
+            return tensor
+
+        alpha = None
+        if channels == 1:
+            color = tensor.expand(3, -1, -1)
+        elif channels == 2:
+            color = tensor[:1].expand(3, -1, -1)
+            alpha = tensor[1:]
+        else:
+            raise Exception(f'image with invalid number of channels given {channels}')
+
+        if not exists(alpha) and self.transparent:
+            alpha = torch.ones(1, *tensor.shape[1:], device=tensor.device)
+
+        return color if not self.transparent else torch.cat((color, alpha))
 
 def resize_to_minimum_size(min_size, image):
     if max(*image.size) < min_size:
         return transforms.functional.resize(image, min_size)
     return image
 
+class RandomApply(nn.Module):
+    def __init__(self, prob, fn, fn_else = lambda x: x):
+        super().__init__()
+        self.fn = fn
+        self.fn_else = fn_else
+        self.prob = prob
+    def forward(self, x):
+        fn = self.fn if random() < self.prob else self.fn_else
+        return fn(x)
 
 class DeepFashionDataset(Dataset):
-  def __init__(self, source_image_path, pose_map_path, texture_map_path, image_size=(512, 512), train=False, batch_size=32):
-    
+
+  def __init__(self, main_folder, image_size, transparent = False, aug_prob = 0.):
+    super().__init__()
+
     self.image_size = image_size
-    self.batch_size = batch_size
-    self.img_path = source_image_path
-    self.pose_path = pose_map_path
-    self.texture_path = texture_map_path
-    self.train = train
 
-    print("Values when initializing Dataset are: ", {"image_size": self.image_size, "batch_size": self.batch_size})
-    self.img_transform = transforms.Compose([
-            # transforms.Lambda(partial(resize_to_minimum_size, image_size)),
-            transforms.Resize(self.image_size),
-            #RandomApply(aug_prob, transforms.RandomResizedCrop(image_size, scale=(0.5, 1.0), ratio=(0.98, 1.02)), transforms.CenterCrop(image_size)),
-            transforms.ToTensor(),
-            # transforms.Normalize(mean=[0.485, 0.456, 0.406],  # standard image norm (based on camera bayes color filtering)
-            #                      std=[0.229, 0.224, 0.225])
-            #transforms.Lambda(expand_greyscale(transparent))
-        ])
-    
-    self.texture_transform = transforms.Compose([
-      transforms.ToTensor(),
-      # transforms.Normalize(mean=[0.485, 0.456, 0.406],
-      #                      std=[0.229, 0.224, 0.225])
-    ])
-    
-
+    self.img_path = main_folder + "/SourceImages"
+    self.pose_path = main_folder + "/PoseMaps"
+    self.texture_path = main_folder + "/TextureMaps"
 
     #begin a list where we will keep the id for given photos. 
     #the same ID should be found in all 3 folders
@@ -53,10 +80,6 @@ class DeepFashionDataset(Dataset):
     #os.walk will return three values: the location it was given, root, the dirs 
     #inside that location and the files in the location
     self.data_id = [d.name for d in os.scandir(self.img_path)]
-    # for d_entry in os.scandir(self.img_path):
-    #     file_
-    #     #this will take the last part of the file's location (which is just its name)
-    #     self.data_id = [file_path.split("/")[-1] for file_path in files]
 
     #define how the data should be categorized
     self.class_map = {"source_img" : 0, "pose_map": 1, "texture_map": 2} 
@@ -67,73 +90,49 @@ class DeepFashionDataset(Dataset):
     mid = len(self.data_id) // 2
     self.data = list(zip(self.data_id[:mid], self.data_id[mid:]))
     self.data += [(y, x) for x, y in self.data]
-    
-    # print('No dup pairs:', all(x[0] != x[1] for x in self.data))
-    # print('no dup tups:', (sum(1 for x in self.data if (self.data.count(x) > 1)) == 0))
 
-    train_prop = int(len(self.data) * 0.99)
-    if self.train:
-        self.data = self.data[:train_prop]
-    else:
-        self.data = self.data[train_prop:]
+
+    assert len(self.data) > 0, f'No training data could be obtained'
+
+    convert_image_fn = convert_transparent_to_rgb if not transparent else convert_rgb_to_transparent
+    num_channels = 3 if not transparent else 4
+
+    self.transform = transforms.Compose([
+        transforms.Lambda(convert_image_fn),
+        transforms.Lambda(partial(resize_to_minimum_size, image_size)),
+        transforms.Resize(image_size),
+        RandomApply(aug_prob, transforms.RandomResizedCrop(image_size, scale=(0.5, 1.0), ratio=(0.98, 1.02)), transforms.CenterCrop(image_size)),
+        transforms.ToTensor(),
+        transforms.Lambda(expand_greyscale(transparent))
+    ])
 
   def __len__(self):
-    return len(self.data)
+      return len(self.data)
 
   def __getitem__(self, idx):
+      id1, id2 = self.data[idx] #get a pair of datapoints from the list of pairings
+      #the image, pose and path locations equal the concat(corresponding root, id)
+      full_image_path1 = os.path.join(self.img_path, id1)
+      full_image_path2 = os.path.join(self.img_path, id2)
 
-    id1, id2 = self.data[idx] #get a pair of datapoints from the list of pairings
-    #the image, pose and path locations equal the concat(corresponding root, id)
-    full_image_path1 = os.path.join(self.img_path, id1)
-    full_image_path2 = os.path.join(self.img_path, id2)
+      full_pose_path1 = os.path.join(self.pose_path, id1)
+      full_pose_path2 = os.path.join(self.pose_path, id2)
 
-    full_pose_path1 = os.path.join(self.pose_path, id1)
-    full_pose_path2 = os.path.join(self.pose_path, id2)
+      full_texture_path1 = os.path.join(self.texture_path, id1)
+      # full_texture_path2 = os.path.join(self.texture_path, id2)
 
-    full_texture_path1 = os.path.join(self.texture_path, id1)
-    # full_texture_path2 = os.path.join(self.texture_path, id2)
+      #read in the source images (including pose and texture), convert to torch 
+      source_img = Image.open(full_image_path1) 
+      source_pose = Image.open(full_pose_path1)
+      source_texture = Image.open(full_texture_path1)
+      
+      #read in the target images (including pose and texture), convert to torch 
+      target_img = Image.open(full_image_path2)
+      target_pose = Image.open(full_pose_path2)
 
-    #read in the source images (including pose and texture), convert to torch 
-    source_img = Image.open(full_image_path1) 
-    source_pose = Image.open(full_pose_path1)
-    source_texture = Image.open(full_texture_path1)
-    
-    #read in the target images (including pose and texture), convert to torch 
-    target_img = Image.open(full_image_path2)
-    target_pose = Image.open(full_pose_path2)
-    # target_texture = Image.open(full_texture_path2)
+      #put them together
+      # print('source_pose size pre-transform', source_pose.size)
+      source_datapoint = (self.img_transform(source_img), self.img_transform(source_pose), self.texture_transform(source_texture))
+      target_datapoint = (self.img_transform(target_img), self.img_transform(target_pose))
 
-    #put them together
-    # print('source_pose size pre-transform', source_pose.size)
-    source_datapoint = (self.img_transform(source_img), self.img_transform(source_pose), self.texture_transform(source_texture))
-    target_datapoint = (self.img_transform(target_img), self.img_transform(target_pose))
-    # print('source_pose size post-transform', source_datapoint[1].shape)
-    return source_datapoint, target_datapoint
-
-class DeepFashionDataModule(pl.LightningDataModule):
-  def __init__(self, source_image_path, pose_map_path, texture_map_path, batch_size=32, image_size=(512, 512), num_workers=2):
-    super().__init__()
-    self.img_path = source_image_path
-    self.pose_path = pose_map_path
-    self.texture_path = texture_map_path
-    self.batch_size = batch_size
-    self.image_size = image_size
-    self.num_workers = num_workers
-
-    print("DataModule intialized with: ", {"img_path": self.img_path, "pose_path":self.pose_path, "texture_path": self.texture_path, "batch_size": self.batch_size, "image_size": self.image_size, "num_workers": self.num_workers})
-
-  def setup(self, stage="fit"):
-    self.train_data = DeepFashionDataset(self.img_path, self.pose_path, self.texture_path, image_size=self.image_size, train=True, batch_size=self.batch_size)
-    self.test_data = DeepFashionDataset(self.img_path, self.pose_path, self.texture_path, image_size=self.image_size, train=False, batch_size=self.batch_size)
-    
-    training_proportion = int(len(self.train_data) * 0.95)
-    self.train_data, self.val_data = random_split(self.train_data, [training_proportion, len(self.train_data)-training_proportion])
-    
-    print("Data Split after setting up DataModule is: ", 'train:', len(self.train_data), 'validation:', len(self.val_data), 'test:', len(self.test_data))
-
-  def train_dataloader(self):
-    return DataLoader(self.train_data, self.batch_size, num_workers=self.num_workers) 
-  def val_dataloader(self):
-    return DataLoader(self.val_data, self.batch_size, num_workers=self.num_workers)
-  def test_dataloader(self):
-    return DataLoader(self.test_data, self.batch_size, num_workers=self.num_workers)
+      return source_datapoint, target_datapoint

@@ -1,1 +1,1 @@
-from .DeepFashion import DeepFashionDataModule, DeepFashionDataset
+from .DeepFashion import DeepFashionDataset

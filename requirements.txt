@@ -64,7 +64,6 @@ pyparsing==2.4.7
 pyrsistent==0.17.3
 PySocks
 python-dateutil
-pytorch-lightning
 pytz
 PyYAML==5.4.1
 ray==1.3.0
@@ -92,3 +91,4 @@ Werkzeug
 yarl
 zipp
 fire
+retry
