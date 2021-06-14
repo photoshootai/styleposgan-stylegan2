@@ -909,7 +909,16 @@ class Trainer():
                     self.GAN.D_cl(generated_images.clone().detach(), accumulate=True)
 
             for i in range(self.gradient_accumulate_every):
-                image_batch = next(self.loader).cuda(self.rank)
+                (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
+                I_s = I_s.cuda(self.rank) 
+                S_pose_map = S_pose_map.cuda(self.rank)
+                S_texture_map = S_texture_map.cuda(self.rank)
+            
+                I_t = I_t.cuda(self.rank)
+                T_pose_map = T_pose_map.cuda(self.rank)
+
+                image_batch = I_s
+                
                 self.GAN.D_cl(image_batch, accumulate=True)
 
             loss = self.GAN.D_cl.calculate_loss()
@@ -1010,7 +1019,7 @@ class Trainer():
 
             real_output = None
             if G_requires_reals:
-                
+
                 (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
                 I_s = I_s.cuda(self.rank) 
                 S_pose_map = S_pose_map.cuda(self.rank)
