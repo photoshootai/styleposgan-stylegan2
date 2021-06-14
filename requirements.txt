@@ -91,3 +91,4 @@ wandb
 Werkzeug
 yarl
 zipp
+fire
