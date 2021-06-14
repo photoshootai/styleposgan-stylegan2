@@ -67,7 +67,8 @@ class DeepFashionDataset(Dataset):
   def __init__(self, main_folder, image_size, transparent = False, aug_prob = 0.):
     super().__init__()
 
-    self.image_size = image_size
+    self.image_size_dims = (image_size, image_size)
+    print("Image Size:  ", image_size)
 
     self.img_path = main_folder + "/SourceImages"
     self.pose_path = main_folder + "/PoseMaps"
@@ -97,13 +98,17 @@ class DeepFashionDataset(Dataset):
     convert_image_fn = convert_transparent_to_rgb if not transparent else convert_rgb_to_transparent
     num_channels = 3 if not transparent else 4
 
-    self.transform = transforms.Compose([
-        transforms.Lambda(convert_image_fn),
-        transforms.Lambda(partial(resize_to_minimum_size, image_size)),
-        transforms.Resize(image_size),
-        RandomApply(aug_prob, transforms.RandomResizedCrop(image_size, scale=(0.5, 1.0), ratio=(0.98, 1.02)), transforms.CenterCrop(image_size)),
+    self.img_transform = transforms.Compose([
+        #transforms.Lambda(convert_image_fn),
+        # transforms.Lambda(partial(resize_to_minimum_size, image_size)),
+        transforms.Resize(self.image_size_dims),
+        #RandomApply(aug_prob, transforms.RandomResizedCrop(image_size, scale=(0.5, 1.0), ratio=(0.98, 1.02)), transforms.CenterCrop(image_size)),
         transforms.ToTensor(),
-        transforms.Lambda(expand_greyscale(transparent))
+        # transforms.Lambda(expand_greyscale(transparent))
+    ])
+
+    self.texture_transform = transforms.Compose([
+      transforms.ToTensor()
     ])
 
   def __len__(self):

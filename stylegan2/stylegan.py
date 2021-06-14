@@ -945,8 +945,19 @@ class Trainer():
             generated_images = G(w_styles, noise)
             fake_output, fake_q_loss = D_aug(generated_images.clone().detach(), detach = True, **aug_kwargs)
 
-            image_batch = next(self.loader).cuda(self.rank)
-            image_batch.requires_grad_()
+            (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
+            # print(I_s.size(), S_pose_map.size(), S_texture_map.size(), I_t.size(), T_pose_map.size())
+
+            I_s = I_s.cuda(self.rank) 
+            S_pose_map = S_pose_map.cuda(self.rank)
+            S_texture_map = S_texture_map.cuda(self.rank)
+            
+            I_t = I_t.cuda(self.rank)
+            T_pose_map = T_pose_map.cuda(self.rank)
+           
+            # image_batch = next(self.loader).cuda(self.rank)
+            image_batch = I_s
+            image_batch.requires_grad_() #keep
             real_output, real_q_loss = D_aug(image_batch, **aug_kwargs)
 
             real_output_loss = real_output
@@ -999,7 +1010,16 @@ class Trainer():
 
             real_output = None
             if G_requires_reals:
-                image_batch = next(self.loader).cuda(self.rank)
+                
+                (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
+                I_s = I_s.cuda(self.rank) 
+                S_pose_map = S_pose_map.cuda(self.rank)
+                S_texture_map = S_texture_map.cuda(self.rank)
+            
+                I_t = I_t.cuda(self.rank)
+                T_pose_map = T_pose_map.cuda(self.rank)
+
+                image_batch = I_s
                 real_output, _ = D_aug(image_batch, detach = True, **aug_kwargs)
                 real_output = real_output.detach()
 
