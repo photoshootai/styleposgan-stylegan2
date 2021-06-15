@@ -413,8 +413,8 @@ class GeneratorBlock(nn.Module):
         super().__init__()
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False) if upsample else None
 
-        self.to_style1 = nn.Linear(latent_dim, input_channels)
-        self.to_noise1 = nn.Linear(1, filters)
+        self.to_style1 =  nn.Linear(latent_dim, input_channels) 
+        self.to_noise1 = nn.Linear(1, filters) 
         self.conv1 = Conv2DMod(input_channels, filters, 3)
         
         self.to_style2 = nn.Linear(latent_dim, filters)
@@ -423,24 +423,43 @@ class GeneratorBlock(nn.Module):
 
         self.activation = leaky_relu()
         self.to_rgb = RGBBlock(latent_dim, filters, upsample_rgb, rgba)
+        #print("GeneratorBlock has been inited")
 
     def forward(self, x, prev_rgb, istyle, inoise):
+        #print("----Gen Block----")
+        #print("X Dim is " +  str(x.size()))
         if exists(self.upsample):
             x = self.upsample(x)
+            #print("X Dim after upsampling " + str(x.size()))
+
+        # print("inoise size and device is", inoise.size(), inoise.device) 
 
         inoise = inoise[:, :x.shape[2], :x.shape[3], :]
-        noise1 = self.to_noise1(inoise).permute((0, 3, 2, 1))
-        noise2 = self.to_noise2(inoise).permute((0, 3, 2, 1))
+        
+        #print("Noise 1 before permutation is: ", inoise.shape)
+        noise1 = self.to_noise1(inoise).permute((0, 3, 1, 2)) # was earlier ((0, 3, 2, 1))
+        #print("Noise1 shape is " + str(noise1.size()))
+
+        noise2 = self.to_noise2(inoise).permute((0, 3, 1, 2)) # was earlier ((0, 3, 2, 1))
 
         style1 = self.to_style1(istyle)
         x = self.conv1(x, style1)
+      
+
+        #print("While adding, X dim after conv1 is " + str(x.size()))
+        #print("While adding, Noise1 is " + str(noise1.size()))
         x = self.activation(x + noise1)
 
         style2 = self.to_style2(istyle)
         x = self.conv2(x, style2)
+
+        # print("While adding, X dim after conv2 is " + str(x.size()))
+        # print("While adding, Noise2 is " + str(noise2.size()))
         x = self.activation(x + noise2)
 
         rgb = self.to_rgb(x, prev_rgb, istyle)
+
+        #print("X dim at the end of Gen Block is: " + str(x.size()))
         return x, rgb
 
 class DiscriminatorBlock(nn.Module):
@@ -461,34 +480,44 @@ class DiscriminatorBlock(nn.Module):
         ) if downsample else None
 
     def forward(self, x):
+        # print("Disc block")
+        # print("X in D_block is", x.size())
         res = self.conv_res(x)
+        # print("X after conv_res is ", x.size())
         x = self.net(x)
+        # print("X after net application is", x.size())
         if exists(self.downsample):
             x = self.downsample(x)
+            # print("X after downsamping is ", x.size())
         x = (x + res) * (1 / math.sqrt(2))
+        # print("X after last + res and 1/sqrt is", x.size())
         return x
-
 class Generator(nn.Module):
-    def __init__(self, image_size, latent_dim, network_capacity = 16, transparent = False, attn_layers = [], no_const = False, fmap_max = 512):
+    #Modified Generator to take Encoded tensor or None as an input
+    def __init__(self, image_size, latent_dim, network_capacity = 16, transparent = False, attn_layers = [], fmap_max = 512):
         super().__init__()
         self.image_size = image_size
         self.latent_dim = latent_dim
-        self.num_layers = int(log2(image_size) - 1)
 
+        #First block is now upsampling: so 1 be non-upsamling and the remaining 4 will be
+        self.num_layers = 5 #This will alwayus be 4 as discussed, may need to make this into a hyperparam? #int(log2(image_size) - 1))
+
+        #Does not apply anymore #Changed 2 ** (i + 1) -> 2 ** (i + 2) to filters of 512, 256, 128, 64
+        #Now filters = [512, 256, 128, 64, 32]
         filters = [network_capacity * (2 ** (i + 1)) for i in range(self.num_layers)][::-1]
 
+
+        #fmap_max bounds the maximum size of the first filter
         set_fmap_max = partial(min, fmap_max)
         filters = list(map(set_fmap_max, filters))
         init_channels = filters[0]
         filters = [init_channels, *filters]
-
         in_out_pairs = zip(filters[:-1], filters[1:])
-        self.no_const = no_const
 
-        if no_const:
-            self.to_initial_block = nn.ConvTranspose2d(latent_dim, init_channels, 4, 1, 0, bias=False)
-        else:
-            self.initial_block = nn.Parameter(torch.randn((1, init_channels, 4, 4)))
+        # if no_const:
+        #     self.to_initial_block = nn.ConvTranspose2d(latent_dim, init_channels, 4, 1, 0, bias=False)
+        # else:
+        #     self.initial_block = nn.Parameter(torch.randn((1, init_channels, 4, 4)))
 
         self.initial_conv = nn.Conv2d(filters[0], filters[0], 3, padding=1)
         self.blocks = nn.ModuleList([])
@@ -511,29 +540,47 @@ class Generator(nn.Module):
                 upsample_rgb = not_last,
                 rgba = transparent
             )
+            
             self.blocks.append(block)
+        
+        print("Generator Initialized with: ", {"image_size": self.image_size, "latent_dim": self.latent_dim, "num_blocks": len(self.blocks), 
+                "attn_layers" : [l.size() for l in self.attns if l is not None]
+        })
 
-    def forward(self, styles, input_noise):
-        batch_size = styles.shape[0]
+
+    #Added s_input as an additional argument to forward
+    def forward(self, z_inputs, input_noise, s_input):
+        batch_size = z_inputs.shape[0] # perhaps should be s_input.shape[0]
         image_size = self.image_size
 
-        if self.no_const:
-            avg_style = styles.mean(dim=1)[:, :, None, None]
-            x = self.to_initial_block(avg_style)
-        else:
-            x = self.initial_block.expand(batch_size, -1, -1, -1)
+        #print("Starting forward pass: ")
+        #print("Batch size is " + str(batch_size))
+        #print("Image size is " + str(image_size))
 
+        x = s_input
+        # print("s_input is: " + str(s_input.size()))
         rgb = None
-        styles = styles.transpose(0, 1)
+        # print("Z_inputs are: ", z_inputs.size())
+        z_inputs = z_inputs.transpose(0, 1) #Change (x, y, z) to (y, x, z)
+
+        #print("Initial Conv Dims is: " + str(self.initial_conv))
         x = self.initial_conv(x)
-
-        for style, block, attn in zip(styles, self.blocks, self.attns):
-            if exists(attn):
+        #print("X dim after convolution is: " + str(x.size()))
+        
+        count = 0
+        # print("Zipped: ", len(z_inputs))
+        #print("z_input length is " , len(z_inputs), ", self.blocks length is ", len(self.blocks), ", self.attns length is ", len(self.attns))
+        for z_input, block, attn in zip(z_inputs, self.blocks, self.attns):
+            count+=1
+            if exists(attn): 
+                # print("X dim before attention" + str(x.size()))
                 x = attn(x)
-            x, rgb = block(x, rgb, style, input_noise)
+                # print("X dim after attention" + str(x.size()))
+            x, rgb = block(x, rgb, z_input, input_noise)
 
+        # print(f"Generator forwarded through {count} blocks")
         return rgb
-
+        
 class Discriminator(nn.Module):
     def __init__(self, image_size, network_capacity = 16, fq_layers = [], fq_dict_size = 256, attn_layers = [], transparent = False, fmap_max = 512):
         super().__init__()
@@ -570,7 +617,7 @@ class Discriminator(nn.Module):
         self.quantize_blocks = nn.ModuleList(quantize_blocks)
 
         chan_last = filters[-1]
-        latent_dim = 2 * 2 * chan_last
+        latent_dim = 2*2*chan_last
 
         self.final_conv = nn.Conv2d(chan_last, chan_last, 3, padding=1)
         self.flatten = Flatten()
@@ -578,7 +625,8 @@ class Discriminator(nn.Module):
 
     def forward(self, x):
         b, *_ = x.shape
-
+        #print("Discriminator forward pass")
+        #print("X shape is", x.size())
         quantize_loss = torch.zeros(1).to(x)
 
         for (block, attn_block, q_block) in zip(self.blocks, self.attn_blocks, self.quantize_blocks):
@@ -591,24 +639,31 @@ class Discriminator(nn.Module):
                 x, loss = q_block(x)
                 quantize_loss += loss
 
+        # print("X before final conv is ", self.final_conv)
         x = self.final_conv(x)
         x = self.flatten(x)
+        # print("X's dims in D after Flatten are" + str(x.size()))
+        # print("to_logit is " + str(self.to_logit))
+        # print("X before logit is", x.size())
         x = self.to_logit(x)
-        return x.squeeze(), quantize_loss
+
+        
+        #print("quantize_loss ", quantize_loss)
+        return x, quantize_loss #Earlier was squeezed, we changed to x.squeeze(), quantize_loss
 
 class StyleGAN2(nn.Module):
-    def __init__(self, image_size, latent_dim = 512, fmap_max = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, cl_reg = False, steps = 1, lr = 1e-4, ttur_mult = 2, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, lr_mlp = 0.1, rank = 0):
+    def __init__(self, image_size, latent_dim = 2048, fmap_max = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, cl_reg = False, steps = 1, lr = 1e-4, ttur_mult = 2, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, lr_mlp = 0.1, rank = 0):
         super().__init__()
         self.lr = lr
         self.steps = steps
         self.ema_updater = EMA(0.995)
 
         self.S = StyleVectorizer(latent_dim, style_depth, lr_mul = lr_mlp)
-        self.G = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers, no_const = no_const, fmap_max = fmap_max)
+        self.G = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers, fmap_max = fmap_max)
         self.D = Discriminator(image_size, network_capacity, fq_layers = fq_layers, fq_dict_size = fq_dict_size, attn_layers = attn_layers, transparent = transparent, fmap_max = fmap_max)
 
         self.SE = StyleVectorizer(latent_dim, style_depth, lr_mul = lr_mlp)
-        self.GE = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers, no_const = no_const)
+        self.GE = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers)
 
         self.D_cl = None
 
@@ -815,7 +870,7 @@ class Trainer():
         
     def init_GAN(self):
         args, kwargs = self.GAN_params
-        self.GAN = StyleGAN2(lr = self.lr, lr_mlp = self.lr_mlp, ttur_mult = self.ttur_mult, image_size = self.image_size, network_capacity = self.network_capacity, fmap_max = self.fmap_max, transparent = self.transparent, fq_layers = self.fq_layers, fq_dict_size = self.fq_dict_size, attn_layers = self.attn_layers, fp16 = self.fp16, cl_reg = self.cl_reg, no_const = self.no_const, rank = self.rank, *args, **kwargs)
+        self.GAN = StyleGAN2(lr = self.lr, lr_mlp = self.lr_mlp, ttur_mult = self.ttur_mult, image_size = self.image_size, network_capacity = self.network_capacity, fmap_max = self.fmap_max, transparent = self.transparent, fq_layers = self.fq_layers, fq_dict_size = self.fq_dict_size, attn_layers = self.attn_layers, fp16 = self.fp16, cl_reg = self.cl_reg, rank = self.rank, *args, **kwargs)
 
         if self.is_ddp:
             ddp_kwargs = {'device_ids': [self.rank]}
@@ -946,12 +1001,22 @@ class Trainer():
         for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[D_aug, S, G]):
             get_latents_fn = mixed_list if random() < self.mixed_prob else noise_list
             style = get_latents_fn(batch_size, num_layers, latent_dim, device=self.rank)
+
+            #print("Style len ", len(style))
+            
             noise = image_noise(batch_size, image_size, device=self.rank)
 
             w_space = latent_to_w(S, style)
-            w_styles = styles_def_to_tensor(w_space)
+            # print("W_space size: ", len(w_space))
 
-            generated_images = G(w_styles, noise)
+            w_styles = styles_def_to_tensor(w_space)
+            # print("W_styles size: ", w_styles.size())
+
+
+            E = torch.rand((batch_size, 512, int(image_size/16), int(image_size/16))).cuda()
+            z_s = torch.randn((batch_size, 1, latent_dim)).cuda().expand(-1, num_layers, -1)
+
+            generated_images = G(z_s, noise, E)
             fake_output, fake_q_loss = D_aug(generated_images.clone().detach(), detach = True, **aug_kwargs)
 
             (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
@@ -1013,7 +1078,10 @@ class Trainer():
             w_space = latent_to_w(S, style)
             w_styles = styles_def_to_tensor(w_space)
 
-            generated_images = G(w_styles, noise)
+            E = torch.rand((batch_size, 512, int(image_size/16), int(image_size/16))).cuda()
+            z_s = torch.randn((batch_size, 1, latent_dim)).cuda().expand(-1, num_layers, -1)
+            
+            generated_images = G(z_s, noise, E)
             fake_output, _ = D_aug(generated_images, **aug_kwargs)
             fake_output_loss = fake_output
 
@@ -1221,7 +1289,11 @@ class Trainer():
         w = map(lambda t: (S(t[0]), t[1]), style)
         w_truncated = self.truncate_style_defs(w, trunc_psi = trunc_psi)
         w_styles = styles_def_to_tensor(w_truncated)
-        generated_images = evaluate_in_chunks(self.batch_size, G, w_styles, noi)
+
+        #TODO: Change to take output of PNet
+        E = torch.rand((self.batch_size, 512, int(self.image_size/16), int(self.image_size/16))).cuda()
+
+        generated_images = evaluate_in_chunks(self.batch_size, G, w_styles, noi, E)
         return generated_images.clamp_(0., 1.)
 
     @torch.no_grad()
