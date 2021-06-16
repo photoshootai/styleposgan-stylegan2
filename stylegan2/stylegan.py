@@ -36,6 +36,7 @@ from PIL import Image
 from pathlib import Path
 
 from datasets import DeepFashionDataset
+from models import ANet, PNet
 
 try:
     from apex import amp
@@ -658,14 +659,19 @@ class StyleGAN2(nn.Module):
         self.steps = steps
         self.ema_updater = EMA(0.995)
 
-        self.S = StyleVectorizer(latent_dim, style_depth, lr_mul = lr_mlp)
+        #self.S = StyleVectorizer(latent_dim, style_depth, lr_mul = lr_mlp)
         self.G = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers, fmap_max = fmap_max)
         self.D = Discriminator(image_size, network_capacity, fq_layers = fq_layers, fq_dict_size = fq_dict_size, attn_layers = attn_layers, transparent = transparent, fmap_max = fmap_max)
 
-        self.SE = StyleVectorizer(latent_dim, style_depth, lr_mul = lr_mlp)
+        #self.SE = StyleVectorizer(latent_dim, style_depth, lr_mul = lr_mlp)
         self.GE = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers)
 
         self.D_cl = None
+
+        #ANet and PNet
+        self.a_net = ANet(im_chan=3)
+        self.p_net = PNet(im_chan=3)
+
 
         if cl_reg:
             from contrastive_learner import ContrastiveLearner
@@ -677,11 +683,10 @@ class StyleGAN2(nn.Module):
         self.D_aug = AugWrapper(self.D, image_size)
 
         # turn off grad for exponential moving averages
-        set_requires_grad(self.SE, False)
         set_requires_grad(self.GE, False)
 
         # init optimizers
-        generator_params = list(self.G.parameters()) + list(self.S.parameters())
+        generator_params = list(self.G.parameters()) + list(self.a_net.parameters())+ list(self.p_net.parameters())
         self.G_opt = Adam(generator_params, lr = self.lr, betas=(0.5, 0.9))
         self.D_opt = Adam(self.D.parameters(), lr = self.lr * ttur_mult, betas=(0.5, 0.9))
 
@@ -694,7 +699,7 @@ class StyleGAN2(nn.Module):
         # startup apex mixed precision
         self.fp16 = fp16
         if fp16:
-            (self.S, self.G, self.D, self.SE, self.GE), (self.G_opt, self.D_opt) = amp.initialize([self.S, self.G, self.D, self.SE, self.GE], [self.G_opt, self.D_opt], opt_level='O1', num_losses=3)
+            (self.G, self.D, self.GE, self.a_net, self.p_net), (self.G_opt, self.D_opt) = amp.initialize([self.G, self.D, self.GE, self.p_net, self.a_net], [self.G_opt, self.D_opt], opt_level='O1', num_losses=3)
 
     def _init_weights(self):
         for m in self.modules():
@@ -713,11 +718,9 @@ class StyleGAN2(nn.Module):
                 old_weight, up_weight = ma_params.data, current_params.data
                 ma_params.data = self.ema_updater.update_average(old_weight, up_weight)
 
-        update_moving_average(self.SE, self.S)
         update_moving_average(self.GE, self.G)
 
     def reset_parameter_averaging(self):
-        self.SE.load_state_dict(self.S.state_dict())
         self.GE.load_state_dict(self.G.state_dict())
 
     def forward(self, x):
@@ -871,13 +874,19 @@ class Trainer():
     def init_GAN(self):
         args, kwargs = self.GAN_params
         self.GAN = StyleGAN2(lr = self.lr, lr_mlp = self.lr_mlp, ttur_mult = self.ttur_mult, image_size = self.image_size, network_capacity = self.network_capacity, fmap_max = self.fmap_max, transparent = self.transparent, fq_layers = self.fq_layers, fq_dict_size = self.fq_dict_size, attn_layers = self.attn_layers, fp16 = self.fp16, cl_reg = self.cl_reg, rank = self.rank, *args, **kwargs)
-
+        
         if self.is_ddp:
             ddp_kwargs = {'device_ids': [self.rank]}
-            self.S_ddp = DDP(self.GAN.S, **ddp_kwargs)
+
             self.G_ddp = DDP(self.GAN.G, **ddp_kwargs)
             self.D_ddp = DDP(self.GAN.D, **ddp_kwargs)
             self.D_aug_ddp = DDP(self.GAN.D_aug, **ddp_kwargs)
+
+
+            #ANet and PNet initialization for DDP
+            self.a_net_ddp = DDP(self.GAN.a_net, **ddp_kwargs)
+            self.p_net_ddp = DDP(self.GAN.p_net, **ddp_kwargs)
+
 
         if exists(self.logger):
             self.logger.set_params(self.hparams)
@@ -920,7 +929,7 @@ class Trainer():
     def train(self):
         assert exists(self.loader), 'You must first initialize the data source with `.set_data_src(<folder of images>)`'
 
-        if not exists(self.GAN):
+        if not exists(self.GAN): #PNet ANet initializations coupled with self.GAN
             self.init_GAN()
 
         self.GAN.train()
@@ -941,10 +950,12 @@ class Trainer():
         apply_path_penalty = not self.no_pl_reg and self.steps > 5000 and self.steps % 32 == 0
         apply_cl_reg_to_generated = self.steps > 20000
 
-        S = self.GAN.S if not self.is_ddp else self.S_ddp
         G = self.GAN.G if not self.is_ddp else self.G_ddp
         D = self.GAN.D if not self.is_ddp else self.D_ddp
         D_aug = self.GAN.D_aug if not self.is_ddp else self.D_aug_ddp
+
+        p_net = self.GAN.p_net if not self.is_ddp else self.p_net_ddp
+        a_net = self.GAN.a_net if not self.is_ddp else self.a_net_ddp
 
         backwards = partial(loss_backwards, self.fp16)
 
@@ -998,26 +1009,20 @@ class Trainer():
         avg_pl_length = self.pl_mean
         self.GAN.D_opt.zero_grad()
 
-        for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[D_aug, S, G]):
-            get_latents_fn = mixed_list if random() < self.mixed_prob else noise_list
-            style = get_latents_fn(batch_size, num_layers, latent_dim, device=self.rank)
+        for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[D_aug, G, a_net, p_net]):
+            # get_latents_fn = mixed_list if random() < self.mixed_prob else noise_list
+            # style = get_latents_fn(batch_size, num_layers, latent_dim, device=self.rank)
 
-            #print("Style len ", len(style))
+            # w_space = latent_to_w(S, style)
+            # # print("W_space size: ", len(w_space))
+
+            # w_styles = styles_def_to_tensor(w_space)
+            # # print("W_styles size: ", w_styles.size())
+
+            # #print("Style len ", len(style))
             
             noise = image_noise(batch_size, image_size, device=self.rank)
 
-            w_space = latent_to_w(S, style)
-            # print("W_space size: ", len(w_space))
-
-            w_styles = styles_def_to_tensor(w_space)
-            # print("W_styles size: ", w_styles.size())
-
-
-            E = torch.rand((batch_size, 512, int(image_size/16), int(image_size/16))).cuda()
-            z_s = torch.randn((batch_size, 1, latent_dim)).cuda().expand(-1, num_layers, -1)
-
-            generated_images = G(z_s, noise, E)
-            fake_output, fake_q_loss = D_aug(generated_images.clone().detach(), detach = True, **aug_kwargs)
 
             (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
             # print(I_s.size(), S_pose_map.size(), S_texture_map.size(), I_t.size(), T_pose_map.size())
@@ -1028,8 +1033,19 @@ class Trainer():
             
             I_t = I_t.cuda(self.rank)
             T_pose_map = T_pose_map.cuda(self.rank)
-           
-            # image_batch = next(self.loader).cuda(self.rank)
+
+            E_s = p_net(S_pose_map)
+            #E_t = p_net(T_pose_map)
+
+            z_s = a_net(S_texture_map).expand(-1, num_layers, -1)
+
+            # E = torch.rand((batch_size, 512, int(image_size/16), int(image_size/16))).cuda()
+            # z_s = torch.randn((batch_size, 1, latent_dim)).cuda().expand(-1, num_layers, -1)
+
+            generated_images = G(z_s, noise, E_s) #I_dash_s
+
+            fake_output, fake_q_loss = D_aug(generated_images.clone().detach(), detach = True, **aug_kwargs)
+
             image_batch = I_s
             image_batch.requires_grad_() #keep
             real_output, real_q_loss = D_aug(image_batch, **aug_kwargs)
@@ -1071,16 +1087,15 @@ class Trainer():
 
         self.GAN.G_opt.zero_grad()
 
-        for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[S, G, D_aug]):
-            style = get_latents_fn(batch_size, num_layers, latent_dim, device=self.rank)
+        for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[G, D_aug, a_net, p_net]):
+            # style = get_latents_fn(batch_size, num_layers, latent_dim, device=self.rank)
+            # w_space = latent_to_w(S, style)
+            # w_styles = styles_def_to_tensor(w_space)
+
             noise = image_noise(batch_size, image_size, device=self.rank)
-
-            w_space = latent_to_w(S, style)
-            w_styles = styles_def_to_tensor(w_space)
-
             E = torch.rand((batch_size, 512, int(image_size/16), int(image_size/16))).cuda()
             z_s = torch.randn((batch_size, 1, latent_dim)).cuda().expand(-1, num_layers, -1)
-            
+
             generated_images = G(z_s, noise, E)
             fake_output, _ = D_aug(generated_images, **aug_kwargs)
             fake_output_loss = fake_output
@@ -1172,6 +1187,7 @@ class Trainer():
 
     @torch.no_grad()
     def evaluate(self, num = 0, trunc = 1.0):
+        return
         self.GAN.eval()
         ext = self.image_extension
         num_rows = self.num_image_tiles
@@ -1285,13 +1301,14 @@ class Trainer():
         return w_space
 
     @torch.no_grad()
-    def generate_truncated(self, S, G, style, noi, trunc_psi = 0.75, num_image_tiles = 8):
-        w = map(lambda t: (S(t[0]), t[1]), style)
-        w_truncated = self.truncate_style_defs(w, trunc_psi = trunc_psi)
-        w_styles = styles_def_to_tensor(w_truncated)
+    def generate_truncated(self, G, a_net, p_net, style, noi, trunc_psi = 0.75, num_image_tiles = 8):
+
 
         #TODO: Change to take output of PNet
-        E = torch.rand((self.batch_size, 512, int(self.image_size/16), int(self.image_size/16))).cuda()
+        E_s = p_net(S_pose_map)
+        #E_t = p_net(T_pose_map)
+
+        z_s = a_net(S_texture_map).expand(-1, G.num_layers, -1)
 
         generated_images = evaluate_in_chunks(self.batch_size, G, w_styles, noi, E)
         return generated_images.clamp_(0., 1.)

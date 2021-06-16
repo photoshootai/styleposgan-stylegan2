@@ -1,6 +1,12 @@
 import torch.nn as nn
 from .layers import ResidualBlock
 
+try:
+    from apex import amp
+    APEX_AVAILABLE = True
+except:
+    APEX_AVAILABLE = False
+
 def get_anet_final_block(in_chan=512, out_chan=2048, hidden_chan=1024, kernel_size=(3,3), stride=4, padding=1, bias=False):
 
     return nn.Sequential(
@@ -15,6 +21,7 @@ def get_anet_final_block(in_chan=512, out_chan=2048, hidden_chan=1024, kernel_si
         nn.ReLU(inplace=True),
         nn.Flatten(start_dim =1, end_dim = -1) #Don't want to flatten the batch
     )
+
 
 class ANet(nn.Module):
     def __init__(self, im_chan=3):
@@ -48,3 +55,5 @@ class ANet(nn.Module):
         z = x.unsqueeze(dim=1) # to go from (batch_size, 2048) -> (batch_size, 1, 2048)
     
         return z
+    
+
