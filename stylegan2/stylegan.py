@@ -13,6 +13,9 @@ from contextlib import contextmanager, ExitStack
 
 import numpy as np
 
+from losses import get_patch_loss, get_face_id_loss, get_l1_loss, get_perceptual_vgg_loss
+from losses import DPatch
+
 import torch
 from torch import nn, einsum
 from torch.utils import data
@@ -214,6 +217,7 @@ def loss_backwards(fp16, loss, optimizer, loss_id, **kwargs):
 
 def gradient_penalty(images, output, weight = 10):
     batch_size = images.shape[0]
+    # print('Shape of Daug', output.shape)
     gradients = torch_grad(outputs=output, inputs=images,
                            grad_outputs=torch.ones(output.size(), device=images.device),
                            create_graph=True, retain_graph=True, only_inputs=True)[0]
@@ -652,21 +656,21 @@ class Discriminator(nn.Module):
         #print("quantize_loss ", quantize_loss)
         return x, quantize_loss #Earlier was squeezed, we changed to x.squeeze(), quantize_loss
 
-class StyleGAN2(nn.Module):
+class StyleGAN2(nn.Module): #This is turned into StylePoseGAN
     def __init__(self, image_size, latent_dim = 2048, fmap_max = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, cl_reg = False, steps = 1, lr = 1e-4, ttur_mult = 2, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, lr_mlp = 0.1, rank = 0):
         super().__init__()
         self.lr = lr
         self.steps = steps
         self.ema_updater = EMA(0.995)
 
-        #self.S = StyleVectorizer(latent_dim, style_depth, lr_mul = lr_mlp)
         self.G = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers, fmap_max = fmap_max)
         self.D = Discriminator(image_size, network_capacity, fq_layers = fq_layers, fq_dict_size = fq_dict_size, attn_layers = attn_layers, transparent = transparent, fmap_max = fmap_max)
 
-        #self.SE = StyleVectorizer(latent_dim, style_depth, lr_mul = lr_mlp)
         self.GE = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers)
 
+        self.d_patch = DPatch()
         self.D_cl = None
+
 
         #ANet and PNet
         self.a_net = ANet(im_chan=3)
@@ -688,7 +692,8 @@ class StyleGAN2(nn.Module):
         # init optimizers
         generator_params = list(self.G.parameters()) + list(self.a_net.parameters())+ list(self.p_net.parameters())
         self.G_opt = Adam(generator_params, lr = self.lr, betas=(0.5, 0.9))
-        self.D_opt = Adam(self.D.parameters(), lr = self.lr * ttur_mult, betas=(0.5, 0.9))
+        disc_params = list(self.D.parameters()) + list(self.d_patch.parameters())
+        self.D_opt = Adam(disc_params, lr = self.lr * ttur_mult, betas=(0.5, 0.9))
 
         # init weights
         self._init_weights()
@@ -699,11 +704,11 @@ class StyleGAN2(nn.Module):
         # startup apex mixed precision
         self.fp16 = fp16
         if fp16:
-            (self.G, self.D, self.GE, self.a_net, self.p_net), (self.G_opt, self.D_opt) = amp.initialize([self.G, self.D, self.GE, self.p_net, self.a_net], [self.G_opt, self.D_opt], opt_level='O1', num_losses=3)
+            (self.G, self.D, self.GE, self.a_net, self.p_net, self.d_patch), (self.G_opt, self.D_opt) = amp.initialize([self.G, self.D, self.GE, self.a_net, self.p_net, self.d_patch], [self.G_opt, self.D_opt], opt_level='O1', num_losses=3)
 
     def _init_weights(self):
         for m in self.modules():
-            if type(m) in {nn.Conv2d, nn.Linear}:
+            if type(m) in {nn.Conv2d, nn.Linear}: #default pytorch is kaiming uniform instead of normal
                 nn.init.kaiming_normal_(m.weight, a=0, mode='fan_in', nonlinearity='leaky_relu')
 
         for block in self.G.blocks:
@@ -725,6 +730,20 @@ class StyleGAN2(nn.Module):
 
     def forward(self, x):
         return x
+
+def get_d_total_loss(I_t,I_dash_s_to_t,pred_real_1,pred_fake_1,pred_real_2,pred_fake_2,d_patch):
+    #where d_patch is an nn.module 
+
+    # GAN_d_loss1
+    gan_d_loss_1 = hinge_loss(pred_real_1, pred_fake_1)
+    # GAN_d_loss2
+    gan_d_loss_2 = hinge_loss(pred_real_2, pred_fake_2)
+    # patch loss 
+    patch_loss = get_patch_loss(I_dash_s_to_t,I_t,d_patch)
+
+    d_total_loss = gan_d_loss_1 + gan_d_loss_2 + torch.mul(patch_loss, -1) #DPatch will maximize patch_loss
+    return d_total_loss
+
 
 class Trainer():
     def __init__(
@@ -886,6 +905,9 @@ class Trainer():
             #ANet and PNet initialization for DDP
             self.a_net_ddp = DDP(self.GAN.a_net, **ddp_kwargs)
             self.p_net_ddp = DDP(self.GAN.p_net, **ddp_kwargs)
+            self.d_patch_ddp = DDP(self.GAN.d_patch, **ddp_kwargs)
+
+
 
 
         if exists(self.logger):
@@ -956,6 +978,7 @@ class Trainer():
 
         p_net = self.GAN.p_net if not self.is_ddp else self.p_net_ddp
         a_net = self.GAN.a_net if not self.is_ddp else self.a_net_ddp
+        d_patch = self.GAN.d_patch if not self.is_ddp else self.p_net_ddp
 
         backwards = partial(loss_backwards, self.fp16)
 
@@ -1010,67 +1033,80 @@ class Trainer():
         self.GAN.D_opt.zero_grad()
 
         for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[D_aug, G, a_net, p_net]):
-            # get_latents_fn = mixed_list if random() < self.mixed_prob else noise_list
-            # style = get_latents_fn(batch_size, num_layers, latent_dim, device=self.rank)
-
-            # w_space = latent_to_w(S, style)
-            # # print("W_space size: ", len(w_space))
-
-            # w_styles = styles_def_to_tensor(w_space)
-            # # print("W_styles size: ", w_styles.size())
-
-            # #print("Style len ", len(style))
             
             noise = image_noise(batch_size, image_size, device=self.rank)
 
-
+            #Get batch inputs
             (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
-            # print(I_s.size(), S_pose_map.size(), S_texture_map.size(), I_t.size(), T_pose_map.size())
-
             I_s = I_s.cuda(self.rank) 
             S_pose_map = S_pose_map.cuda(self.rank)
             S_texture_map = S_texture_map.cuda(self.rank)
-            
             I_t = I_t.cuda(self.rank)
             T_pose_map = T_pose_map.cuda(self.rank)
 
+            #Get encodings
             E_s = p_net(S_pose_map)
-            #E_t = p_net(T_pose_map)
-
+            E_t = p_net(T_pose_map)
             z_s = a_net(S_texture_map).expand(-1, num_layers, -1)
 
-            # E = torch.rand((batch_size, 512, int(image_size/16), int(image_size/16))).cuda()
-            # z_s = torch.randn((batch_size, 1, latent_dim)).cuda().expand(-1, num_layers, -1)
+            
+            #Generate I_dash_s
+            I_dash_s = G(z_s, noise, E_s) #I_dash_s
+            fake_output_1, fake_q_loss_1 = D_aug(I_dash_s.clone().detach(), detach = True, **aug_kwargs)
 
-            generated_images = G(z_s, noise, E_s) #I_dash_s
+            I_s.requires_grad_() #keep
+            real_output_1, real_q_loss_1 = D_aug(I_s, **aug_kwargs)
 
-            fake_output, fake_q_loss = D_aug(generated_images.clone().detach(), detach = True, **aug_kwargs)
+            real_output_loss_1 = real_output_1
+            fake_output_loss_1 = fake_output_1
 
-            image_batch = I_s
-            image_batch.requires_grad_() #keep
-            real_output, real_q_loss = D_aug(image_batch, **aug_kwargs)
 
-            real_output_loss = real_output
-            fake_output_loss = fake_output
+            #Generate I_dash_to_t
+            I_dash_s_to_t = G(z_s,noise,E_t)
+            fake_output_2, fake_q_loss_2 = D_aug(I_dash_s_to_t.clone().detach(), detach = True, **aug_kwargs)
+
+            I_t.requires_grad_() 
+            real_output_2, real_q_loss_2 = D_aug(I_t, **aug_kwargs)  # opt params are for self.D instead os self.D_aug
+
+            real_output_loss_2 = real_output_2
+            fake_output_loss_2 = fake_output_2
 
             if self.rel_disc_loss:
-                real_output_loss = real_output_loss - fake_output.mean()
-                fake_output_loss = fake_output_loss - real_output.mean()
+                real_output_loss_1 = real_output_loss_1 - fake_output_1.mean()  # does this need brackets?
+                fake_output_loss_1 = fake_output_loss_1 - real_output_1.mean()
+            
+                real_output_loss_2 = real_output_loss_2 - fake_output_2.mean()
+                fake_output_loss_2 = fake_output_loss_2 - real_output_2.mean()
 
-            divergence = D_loss_fn(real_output_loss, fake_output_loss)
+
+            # divergence = D_loss_fn(real_output_loss, fake_output_loss)
+            divergence = get_d_total_loss(I_t,I_dash_s_to_t, real_output_loss_1, fake_output_loss_1,real_output_loss_2,fake_output_loss_2, self.GAN.d_patch)
             disc_loss = divergence
 
             if self.has_fq:
-                quantize_loss = (fake_q_loss + real_q_loss).mean()
+                quantize_loss = (fake_q_loss_1 + real_q_loss_1).mean()
                 self.q_loss = float(quantize_loss.detach().item())
 
                 disc_loss = disc_loss + quantize_loss
 
             if apply_gradient_penalty:
-                gp = gradient_penalty(image_batch, real_output)
+                gp = gradient_penalty(I_s, real_output_1)
+                self.last_gp_loss = gp.clone().detach().item() # remove item
+                self.track(self.last_gp_loss, 'GP')
+                disc_loss = disc_loss + gp 
+
+            if self.has_fq:
+                quantize_loss = (fake_q_loss_2 + real_q_loss_2).mean()
+                self.q_loss = float(quantize_loss.detach().item())
+
+                disc_loss = disc_loss + quantize_loss
+
+            if apply_gradient_penalty:
+                gp = gradient_penalty(I_t, real_output_2)
                 self.last_gp_loss = gp.clone().detach().item()
                 self.track(self.last_gp_loss, 'GP')
                 disc_loss = disc_loss + gp
+                
 
             disc_loss = disc_loss / self.gradient_accumulate_every
             disc_loss.register_hook(raise_if_nan)

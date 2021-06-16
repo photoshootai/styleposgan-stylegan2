@@ -43,6 +43,7 @@ class DPatch(torch.nn.Module):
 
         sequence += [torch.nn.Conv2d(n_filters, 1, kernel_size=kernel_size, stride=1, padding=pad_size)]
 
+        sequence += [torch.nn.Tanh()]
         self.model = torch.nn.Sequential(*sequence)
 
     def forward(self, input):

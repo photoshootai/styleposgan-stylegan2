@@ -1,9 +1,11 @@
 import torch
 import torch.nn as nn
+
     
+
 #Eq 4 in paper
 def get_l1_loss(I_gen, I_gt, reduction='mean'):
-    l1_loss = nn.L1Loss(reduction=reduction)
+    l1_loss = nn.L1Loss(reduction=reduction) # reconsider init module every call
     return l1_loss(I_gen, I_gt)
 
 def get_perceptual_vgg_loss(vgg_perceptual_model, I_gen, I_gt):
@@ -76,6 +78,7 @@ def get_patch_loss(generated: torch.Tensor, real: torch.Tensor,
     """
     d_x = DPatch(real)
     d_g_z = DPatch(generated)
+    # print('Shape of DPatch', d_x.shape)
     loss = get_l1_loss(d_g_z, d_x, reduction='mean')
     return loss
 
