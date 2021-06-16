@@ -1124,13 +1124,14 @@ class Trainer():
         self.GAN.G_opt.zero_grad()
 
         for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[G, D_aug, a_net, p_net]):
-            # style = get_latents_fn(batch_size, num_layers, latent_dim, device=self.rank)
-            # w_space = latent_to_w(S, style)
-            # w_styles = styles_def_to_tensor(w_space)
 
             noise = image_noise(batch_size, image_size, device=self.rank)
-            E = torch.rand((batch_size, 512, int(image_size/16), int(image_size/16))).cuda()
-            z_s = torch.randn((batch_size, 1, latent_dim)).cuda().expand(-1, num_layers, -1)
+
+            #Get encodings
+            E_s = p_net(S_pose_map)
+            E_t = p_net(T_pose_map)
+            z_s = a_net(S_texture_map).expand(-1, num_layers, -1)
+
 
             generated_images = G(z_s, noise, E)
             fake_output, _ = D_aug(generated_images, **aug_kwargs)
