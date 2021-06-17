@@ -41,6 +41,8 @@ from pathlib import Path
 from datasets import DeepFashionDataset
 from models import ANet, PNet
 
+from losses import VGG16Perceptual, FaceIDLoss
+
 try:
     from apex import amp
     APEX_AVAILABLE = True
@@ -657,11 +659,12 @@ class Discriminator(nn.Module):
         return x, quantize_loss #Earlier was squeezed, we changed to x.squeeze(), quantize_loss
 
 class StyleGAN2(nn.Module): #This is turned into StylePoseGAN
-    def __init__(self, image_size, latent_dim = 2048, fmap_max = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, cl_reg = False, steps = 1, lr = 1e-4, ttur_mult = 2, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, lr_mlp = 0.1, rank = 0):
+    def __init__(self, image_size, latent_dim = 2048, mtcnn_crop_size = 160, fmap_max = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, cl_reg = False, steps = 1, lr = 1e-4, ttur_mult = 2, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, lr_mlp = 0.1, rank = 0):
         super().__init__()
         self.lr = lr
         self.steps = steps
         self.ema_updater = EMA(0.995)
+        self.mtcnn_crop_size=160
 
         self.G = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers, fmap_max = fmap_max)
         self.D = Discriminator(image_size, network_capacity, fq_layers = fq_layers, fq_dict_size = fq_dict_size, attn_layers = attn_layers, transparent = transparent, fmap_max = fmap_max)
@@ -671,17 +674,22 @@ class StyleGAN2(nn.Module): #This is turned into StylePoseGAN
         self.d_patch = DPatch()
         self.D_cl = None
 
+        # self.cuda(rank)
+        # print("CUDA DEVICE WITH RANK: ", self.device)
+
 
         #ANet and PNet
         self.a_net = ANet(im_chan=3)
         self.p_net = PNet(im_chan=3)
 
+        self.vgg = VGG16Perceptual(requires_grad=False).eval()
+        self.face_id = FaceIDLoss(self.mtcnn_crop_size, requires_grad = False).eval()
 
-        if cl_reg:
-            from contrastive_learner import ContrastiveLearner
-            # experimental contrastive loss discriminator regularization
-            assert not transparent, 'contrastive loss regularization does not work with transparent images yet'
-            self.D_cl = ContrastiveLearner(self.D, image_size, hidden_layer='flatten')
+        # if cl_reg:
+        #     from contrastive_learner import ContrastiveLearner
+        #     # experimental contrastive loss discriminator regularization
+        #     assert not transparent, 'contrastive loss regularization does not work with transparent images yet'
+        #     self.D_cl = ContrastiveLearner(self.D, image_size, hidden_layer='flatten')
 
         # wrapper for augmenting all images going into the discriminator
         self.D_aug = AugWrapper(self.D, image_size)
@@ -704,7 +712,7 @@ class StyleGAN2(nn.Module): #This is turned into StylePoseGAN
         # startup apex mixed precision
         self.fp16 = fp16
         if fp16:
-            (self.G, self.D, self.GE, self.a_net, self.p_net, self.d_patch), (self.G_opt, self.D_opt) = amp.initialize([self.G, self.D, self.GE, self.a_net, self.p_net, self.d_patch], [self.G_opt, self.D_opt], opt_level='O1', num_losses=3)
+            (self.G, self.D, self.GE, self.a_net, self.p_net, self.d_patch, self.vgg, self.face_id), (self.G_opt, self.D_opt) = amp.initialize([self.G, self.D, self.GE, self.a_net, self.p_net, self.d_patch, self.vgg, self.face_id], [self.G_opt, self.D_opt], opt_level='O1', num_losses=3)
 
     def _init_weights(self):
         for m in self.modules():
@@ -744,6 +752,33 @@ def get_d_total_loss(I_t,I_dash_s_to_t,pred_real_1,pred_fake_1,pred_real_2,pred_
     d_total_loss = gan_d_loss_1 + gan_d_loss_2 + torch.mul(patch_loss, -1) #DPatch will maximize patch_loss
     return d_total_loss
 
+def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1, fake_output_2, real_output_2, vgg_model, face_id_model, d_patch_model, mtcnn_crop_size):
+
+
+    weight_l1 =1
+    weight_vgg = 1
+    weight_face = 1
+    weight_gan = 1
+    weight_patch = 1
+
+
+    # GAN_d_loss1
+    gan_d_loss_1 = gen_hinge_loss(fake_output_1, real_output_1)
+    # GAN_d_loss2
+    gan_d_loss_2 = gen_hinge_loss(fake_output_2, real_output_2)
+
+    patch_loss = get_patch_loss(I_dash_s_to_t, I_t, d_patch_model)
+
+    rec_loss_1 =    weight_l1 * get_l1_loss(I_dash_s, I_s) + \
+                    weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s, I_s) #+ \
+                   # weight_face * get_face_id_loss(I_dash_s, I_s, face_id_model, crop_size=mtcnn_crop_size)
+
+    rec_loss_2 =    weight_l1 * get_l1_loss(I_dash_s_to_t ,I_t) + \
+                    weight_vgg * get_perceptual_vgg_loss(vgg_model,I_dash_s_to_t, I_t) #+ \
+                   # weight_face * get_face_id_loss(I_dash_s_to_t, I_t, face_id_model, crop_size=mtcnn_crop_size)
+
+    g_loss_total= rec_loss_1 + rec_loss_2 + gan_d_loss_1 + gan_d_loss_2 + patch_loss
+    return g_loss_total
 
 class Trainer():
     def __init__(
@@ -907,6 +942,8 @@ class Trainer():
             self.p_net_ddp = DDP(self.GAN.p_net, **ddp_kwargs)
             self.d_patch_ddp = DDP(self.GAN.d_patch, **ddp_kwargs)
 
+            self.vgg_ddp = DDP(self.GAN.vgg, **ddp_kwargs)
+            self.face_id_ddp = DDP(self.GAN.face_id, **ddp_kwargs)
 
 
 
@@ -978,7 +1015,11 @@ class Trainer():
 
         p_net = self.GAN.p_net if not self.is_ddp else self.p_net_ddp
         a_net = self.GAN.a_net if not self.is_ddp else self.a_net_ddp
-        d_patch = self.GAN.d_patch if not self.is_ddp else self.p_net_ddp
+        d_patch = self.GAN.d_patch if not self.is_ddp else self.d_patch_ddp
+
+        vgg_model = self.GAN.vgg if not self.is_ddp else self.vgg_ddp
+        face_id_model = self.GAN.face_id if not self.is_ddp else self.face_id_ddp
+        mtcnn_crop_size= self.GAN.mtcnn_crop_size
 
         backwards = partial(loss_backwards, self.fp16)
 
@@ -1032,7 +1073,7 @@ class Trainer():
         avg_pl_length = self.pl_mean
         self.GAN.D_opt.zero_grad()
 
-        for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[D_aug, G, a_net, p_net]):
+        for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[D_aug, G, a_net, p_net, d_patch]):
             
             noise = image_noise(batch_size, image_size, device=self.rank)
 
@@ -1080,7 +1121,7 @@ class Trainer():
 
 
             # divergence = D_loss_fn(real_output_loss, fake_output_loss)
-            divergence = get_d_total_loss(I_t,I_dash_s_to_t, real_output_loss_1, fake_output_loss_1,real_output_loss_2,fake_output_loss_2, self.GAN.d_patch)
+            divergence = get_d_total_loss(I_t,I_dash_s_to_t, real_output_loss_1, fake_output_loss_1,real_output_loss_2,fake_output_loss_2, d_patch)
             disc_loss = divergence
 
             if self.has_fq:
@@ -1123,48 +1164,62 @@ class Trainer():
 
         self.GAN.G_opt.zero_grad()
 
-        for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[G, D_aug, a_net, p_net]):
+        for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[G, D_aug, a_net, p_net, d_patch, vgg_model, face_id_model]):
+            # style = get_latents_fn(batch_size, num_layers, latent_dim, device=self.rank)
+            # w_space = latent_to_w(S, style)
+            # w_styles = styles_def_to_tensor(w_space)
+
+            (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
+            I_s = I_s.cuda(self.rank) 
+            S_pose_map = S_pose_map.cuda(self.rank)
+            S_texture_map = S_texture_map.cuda(self.rank)
+            I_t = I_t.cuda(self.rank)
+            T_pose_map = T_pose_map.cuda(self.rank)
 
             noise = image_noise(batch_size, image_size, device=self.rank)
-
+            
             #Get encodings
             E_s = p_net(S_pose_map)
             E_t = p_net(T_pose_map)
             z_s = a_net(S_texture_map).expand(-1, num_layers, -1)
 
+            I_dash_s = G(z_s, noise, E_s) #I_dash_s
+            fake_output_1, _ = D_aug(I_dash_s, **aug_kwargs)
+            fake_output_loss_1 = fake_output_1
 
-            generated_images = G(z_s, noise, E)
-            fake_output, _ = D_aug(generated_images, **aug_kwargs)
-            fake_output_loss = fake_output
+            real_output_1 = None
 
-            real_output = None
-            if G_requires_reals:
-
-                (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
-                I_s = I_s.cuda(self.rank) 
-                S_pose_map = S_pose_map.cuda(self.rank)
-                S_texture_map = S_texture_map.cuda(self.rank)
             
-                I_t = I_t.cuda(self.rank)
-                T_pose_map = T_pose_map.cuda(self.rank)
+            I_dash_s_to_t = G(z_s, noise, E_t) #I_dash_s
+            fake_output_2, _ = D_aug(I_dash_s_to_t, **aug_kwargs)
+            fake_output_loss_2 = fake_output_2
 
-                image_batch = I_s
-                real_output, _ = D_aug(image_batch, detach = True, **aug_kwargs)
-                real_output = real_output.detach()
+            real_output_2 = None 
+            
+            if G_requires_reals:
+                image_batch_I_s = I_s
+                real_output_1, _ = D_aug(image_batch_I_s, detach = True, **aug_kwargs)
+                real_output_1 = real_output_1.detach()
 
+                image_batch_I_t = I_t
+                real_output_2, _ = D_aug(image_batch_I_t, detach = True, **aug_kwargs)
+                real_output_2 = real_output_2.detach()
+                
             if self.top_k_training:
                 epochs = (self.steps * batch_size * self.gradient_accumulate_every) / len(self.dataset)
                 k_frac = max(self.generator_top_k_gamma ** epochs, self.generator_top_k_frac)
                 k = math.ceil(batch_size * k_frac)
 
                 if k != batch_size:
-                    fake_output_loss, _ = fake_output_loss.topk(k=k, largest=False)
+                    fake_output_loss_1, _ = fake_output_loss_1.topk(k=k, largest=False)
+                    fake_output_loss_2, _ = fake_output_loss_2.topk(k=k, largest=False)
 
-            loss = G_loss_fn(fake_output_loss, real_output)
+            # loss = G_loss_fn(fake_output_loss, real_output)
+            loss =  get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1, fake_output_2, real_output_2, vgg_model, face_id_model, d_patch, mtcnn_crop_size)
             gen_loss = loss
 
             if apply_path_penalty:
-                pl_lengths = calc_pl_lengths(w_styles, generated_images)
+                pl_lengths = calc_pl_lengths(z_s, I_dash_s)
                 avg_pl_length = np.mean(pl_lengths.detach().cpu().numpy())
 
                 if not is_empty(self.pl_mean):
