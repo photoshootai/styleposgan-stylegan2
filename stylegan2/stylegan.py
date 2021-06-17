@@ -755,7 +755,7 @@ def get_d_total_loss(I_t,I_dash_s_to_t,pred_real_1,pred_fake_1,pred_real_2,pred_
 def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1, fake_output_2, real_output_2, vgg_model, face_id_model, d_patch_model, mtcnn_crop_size):
 
 
-    weight_l1 =1
+    weight_l1 = 1
     weight_vgg = 1
     weight_face = 1
     weight_gan = 1
