@@ -92,3 +92,4 @@ yarl
 zipp
 fire
 retry
+pytorch-fid

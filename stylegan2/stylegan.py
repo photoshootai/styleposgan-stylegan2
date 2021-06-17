@@ -1023,6 +1023,7 @@ class Trainer():
 
         backwards = partial(loss_backwards, self.fp16)
 
+        #Not used
         if exists(self.GAN.D_cl):
             self.GAN.D_opt.zero_grad()
 
@@ -1266,13 +1267,13 @@ class Trainer():
             if self.steps % self.evaluate_every == 0 or (self.steps % 100 == 0 and self.steps < 2500):
                 self.evaluate(floor(self.steps / self.evaluate_every))
 
-            if exists(self.calculate_fid_every) and self.steps % self.calculate_fid_every == 0 and self.steps != 0:
-                num_batches = math.ceil(self.calculate_fid_num_images / self.batch_size)
-                fid = self.calculate_fid(num_batches)
-                self.last_fid = fid
+            # if exists(self.calculate_fid_every) and self.steps % self.calculate_fid_every == 0 and self.steps != 0:
+            #     num_batches = math.ceil(self.calculate_fid_num_images / self.batch_size)
+            #     fid = self.calculate_fid(num_batches)
+            #     self.last_fid = fid
 
-                with open(str(self.results_dir / self.name / f'fid_scores.txt'), 'a') as f:
-                    f.write(f'{self.steps},{fid}\n')
+            #     with open(str(self.results_dir / self.name / f'fid_scores.txt'), 'a') as f:
+            #         f.write(f'{self.steps},{fid}\n')
 
         self.steps += 1
         self.av = None
