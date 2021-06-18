@@ -24,7 +24,7 @@ def convert_transparent_to_rgb(image):
         return image.convert('RGB')
     return image
 
-class scale_and_crop_transform(object):
+class scale_and_crop(object):
     def __init__(self, img_size: Tuple[int]) -> None:
         self.img_size = img_size
         self.crop = transforms.RandomCrop(img_size)
@@ -83,12 +83,13 @@ class RandomApply(nn.Module):
         return fn(x)
 
 class DeepFashionDataset(Dataset):
-    def __init__(self, data_dir: str, image_size: Union[Tuple, int, float]=(512, 512),
+    def __init__(self, data_dir: str, image_size: Union[Tuple, int, float]=(512, 512), scale_crop: bool=True,
                  transparent: bool=False, seed: int=42, aug_prob: float=0.0) -> None:
         """
         Arguments:
             data_dir [str]: Path to data directory, should have subfolders {SourceImages, PoseMaps, TextureMaps}
             image_size [opt int or Tuple=(512, 512)]: Size to transform PoseMap images and SourceImages images
+            scale_crop [opt bool=True]: scale and crop instead of resize
             transparent [opt bool=False]: if image has transparency channel
             seed [opt int=42]: The seed to shuffle data with
             aug_prob [opt float=0.0]: probability of augmentation on images in range [0.0, 1.0]
@@ -120,17 +121,16 @@ class DeepFashionDataset(Dataset):
 
         self.to_rgb = convert_transparent_to_rgb if transparent else lambda x: x
         # self.expand_greyscale = expand_greyscale(transparent)
-        self.scale_and_crop_transform = scale_and_crop_transform(self.img_size)
-
+        self.scale_and_crop = scale_and_crop(self.img_size) if scale_crop else transforms.Resize(self.img_size) 
         self.transforms = (
             transforms.Compose([ # For source images
                 transforms.ToTensor(),  # [0, 255] gets mapped to [0.0, 1.0]
                 transforms.Lambda(self.to_rgb), # convert to 3 channels (squash alpha)
-                transforms.Lambda(self.scale_and_crop_transform)
+                transforms.Lambda(self.scale_and_crop)
             ]),
             transforms.Compose([  # For Posemaps
                 transforms.ToTensor(),  # this will screw up pose segmentation since {0,..., 24} gets mapped to [0.0, 1.0]
-                transforms.Lambda(self.scale_and_crop_transform) # guaranteed to be 3 channels
+                transforms.Lambda(self.scale_and_crop) # guaranteed to be 3 channels
             ]),
             transforms.Compose([  # For texture Maps
                 transforms.ToTensor() # converts [0, 255] to float[0.0, 1.0]
