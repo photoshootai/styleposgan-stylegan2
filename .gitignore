@@ -45,3 +45,4 @@ tb_logs/
 /checkpoints
 /wandb
 /results
+/fid

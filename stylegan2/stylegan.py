@@ -260,6 +260,7 @@ def leaky_relu(p=0.2):
 
 def evaluate_in_chunks(max_batch_size, model, *args):
     split_args = list(zip(*list(map(lambda x: x.split(max_batch_size, dim=0), args))))
+
     chunked_outputs = [model(*i) for i in split_args]
     if len(chunked_outputs) == 1:
         return chunked_outputs[0]
@@ -1265,22 +1266,24 @@ class Trainer():
                 self.save(self.checkpoint_num)
 
             if self.steps % self.evaluate_every == 0 or (self.steps % 100 == 0 and self.steps < 2500):
+                print("Evaluating and saving images")
                 self.evaluate(floor(self.steps / self.evaluate_every))
 
-            # if exists(self.calculate_fid_every) and self.steps % self.calculate_fid_every == 0 and self.steps != 0:
-            #     num_batches = math.ceil(self.calculate_fid_num_images / self.batch_size)
-            #     fid = self.calculate_fid(num_batches)
-            #     self.last_fid = fid
+            if exists(self.calculate_fid_every) and self.steps % self.calculate_fid_every == 0 and self.steps != 0:
+                print("Calculating FIDs")
+                num_batches = math.ceil(self.calculate_fid_num_images / self.batch_size)
+                fid = self.calculate_fid(num_batches)
+                self.last_fid = fid
 
-            #     with open(str(self.results_dir / self.name / f'fid_scores.txt'), 'a') as f:
-            #         f.write(f'{self.steps},{fid}\n')
+                with open(str(self.results_dir / self.name / f'fid_scores.txt'), 'a') as f:
+                    f.write(f'{self.steps},{fid}\n')
 
         self.steps += 1
         self.av = None
 
     @torch.no_grad()
     def evaluate(self, num = 0, trunc = 1.0):
-        return
+
         self.GAN.eval()
         ext = self.image_extension
         num_rows = self.num_image_tiles
@@ -1289,40 +1292,55 @@ class Trainer():
         image_size = self.GAN.G.image_size
         num_layers = self.GAN.G.num_layers
 
-        # latents and noise
 
-        latents = noise_list(num_rows ** 2, num_layers, latent_dim, device=self.rank)
+        #Get batch inputs
+        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
+        I_s = I_s.cuda(self.rank) 
+        S_pose_map = S_pose_map.cuda(self.rank)
+        S_texture_map = S_texture_map.cuda(self.rank)
+        I_t = I_t.cuda(self.rank)
+        T_pose_map = T_pose_map.cuda(self.rank)
+
+        #Get encodings
+        E_t = self.GAN.p_net(T_pose_map)
+        z_s = self.GAN.a_net(S_texture_map).expand(-1, num_layers, -1)
+
+
         n = image_noise(num_rows ** 2, image_size, device=self.rank)
 
         # regular
 
-        generated_images = self.generate_truncated(self.GAN.S, self.GAN.G, latents, n, trunc_psi = self.trunc_psi)
+        generated_images = self.generate_truncated(self.GAN.G, z_s, n, E_t)
         torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}.{ext}'), nrow=num_rows)
         
         # moving averages
 
-        generated_images = self.generate_truncated(self.GAN.SE, self.GAN.GE, latents, n, trunc_psi = self.trunc_psi)
+        generated_images = self.generate_truncated(self.GAN.GE, z_s, n, E_t)
         torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}-ema.{ext}'), nrow=num_rows)
 
-        # mixing regularities
 
-        def tile(a, dim, n_tile):
-            init_dim = a.size(dim)
-            repeat_idx = [1] * a.dim()
-            repeat_idx[dim] = n_tile
-            a = a.repeat(*(repeat_idx))
-            order_index = torch.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)])).cuda(self.rank)
-            return torch.index_select(a, dim, order_index)
+        """
+        Don't need mixed regularities
+        """
+        # # mixing regularities
 
-        nn = noise(num_rows, latent_dim, device=self.rank)
-        tmp1 = tile(nn, 0, num_rows)
-        tmp2 = nn.repeat(num_rows, 1)
+        # def tile(a, dim, n_tile):
+        #     init_dim = a.size(dim)
+        #     repeat_idx = [1] * a.dim()
+        #     repeat_idx[dim] = n_tile
+        #     a = a.repeat(*(repeat_idx))
+        #     order_index = torch.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)])).cuda(self.rank)
+        #     return torch.index_select(a, dim, order_index)
 
-        tt = int(num_layers / 2)
-        mixed_latents = [(tmp1, tt), (tmp2, num_layers - tt)]
+        # nn = noise(num_rows, latent_dim, device=self.rank)
+        # tmp1 = tile(nn, 0, num_rows)
+        # tmp2 = nn.repeat(num_rows, 1)
 
-        generated_images = self.generate_truncated(self.GAN.SE, self.GAN.GE, mixed_latents, n, trunc_psi = self.trunc_psi)
-        torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}-mr.{ext}'), nrow=num_rows)
+        # tt = int(num_layers / 2)
+        # mixed_latents = [(tmp1, tt), (tmp2, num_layers - tt)]
+
+        # generated_images = self.generate_truncated(self.GAN.GE, mixed_latents, n, )
+        # torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}-mr.{ext}'), nrow=num_rows)
 
     @torch.no_grad()
     def calculate_fid(self, num_batches):
@@ -1332,6 +1350,15 @@ class Trainer():
         real_path = self.fid_dir / 'real'
         fake_path = self.fid_dir / 'fake'
 
+        #Get batch inputs
+        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
+        I_s = I_s.cuda(self.rank) 
+        S_pose_map = S_pose_map.cuda(self.rank)
+        S_texture_map = S_texture_map.cuda(self.rank)
+        I_t = I_t.cuda(self.rank)
+        T_pose_map = T_pose_map.cuda(self.rank)
+
+
         # remove any existing files used for fid calculation and recreate directories
 
         if not real_path.exists() or self.clear_fid_cache:
@@ -1339,8 +1366,7 @@ class Trainer():
             os.makedirs(real_path)
 
             for batch_num in tqdm(range(num_batches), desc='calculating FID - saving reals'):
-                real_batch = next(self.loader)
-                for k, image in enumerate(real_batch.unbind(0)):
+                for k, image in enumerate(I_t.unbind(0)):
                     filename = str(k + batch_num * self.batch_size)
                     torchvision.utils.save_image(image, str(real_path / f'{filename}.png'))
 
@@ -1356,13 +1382,17 @@ class Trainer():
         image_size = self.GAN.G.image_size
         num_layers = self.GAN.G.num_layers
 
+        #Get encodings
+        E_t = self.GAN.p_net(T_pose_map)
+        z_s = self.GAN.a_net(S_texture_map).expand(-1, num_layers, -1)
+
+
         for batch_num in tqdm(range(num_batches), desc='calculating FID - saving generated'):
             # latents and noise
-            latents = noise_list(self.batch_size, num_layers, latent_dim, device=self.rank)
             noise = image_noise(self.batch_size, image_size, device=self.rank)
 
             # moving averages
-            generated_images = self.generate_truncated(self.GAN.SE, self.GAN.GE, latents, noise, trunc_psi = self.trunc_psi)
+            generated_images = self.generate_truncated(self.GAN.GE, z_s, noise, E_t)
 
             for j, image in enumerate(generated_images.unbind(0)):
                 torchvision.utils.save_image(image, str(fake_path / f'{str(j + batch_num * self.batch_size)}-ema.{ext}'))
@@ -1394,16 +1424,8 @@ class Trainer():
         return w_space
 
     @torch.no_grad()
-    def generate_truncated(self, G, a_net, p_net, style, noi, trunc_psi = 0.75, num_image_tiles = 8):
-
-
-        #TODO: Change to take output of PNet
-        E_s = p_net(S_pose_map)
-        #E_t = p_net(T_pose_map)
-
-        z_s = a_net(S_texture_map).expand(-1, G.num_layers, -1)
-
-        generated_images = evaluate_in_chunks(self.batch_size, G, w_styles, noi, E)
+    def generate_truncated(self, G, z_s, noi, E, trunc_psi = 0.75, num_image_tiles = 8):
+        generated_images = evaluate_in_chunks(self.batch_size, G, z_s, noi, E)
         return generated_images.clamp_(0., 1.)
 
     @torch.no_grad()
