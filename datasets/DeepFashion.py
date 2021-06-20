@@ -114,7 +114,7 @@ class DeepFashionDataset(Dataset):
         random.shuffle(file_names)
 
         mid = len(file_names) // 2
-        self.data = list(chain(zip(file_names[mid:], file_names[mid:]), zip(file_names[:mid], file_names[:mid])))
+        self.data = list(chain(zip(file_names[:mid], file_names[mid:]), zip(file_names[mid:], file_names[:mid])))
         self.data_len = len(self.data)
 
         assert self.data_len > 0, 'Empty dataset'
