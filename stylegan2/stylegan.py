@@ -1313,11 +1313,17 @@ class Trainer():
         generated_images = self.generate_truncated(self.GAN.G, z_s, n, E_t)
         torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}.{ext}'), nrow=num_rows)
         
+        images = wandb.Image(generated_images, caption="Generations Regular")
+        wandb.log({"generations_regular": images})
+
         # moving averages
 
         generated_images = self.generate_truncated(self.GAN.GE, z_s, n, E_t)
         torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}-ema.{ext}'), nrow=num_rows)
 
+                
+        images = wandb.Image(generated_images, caption="Generations EMA")
+        wandb.log({"generations_ema": images})
 
         """
         Don't need mixed regularities
