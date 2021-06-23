@@ -751,9 +751,6 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
         self.d_patch = DPatch()
         self.D_cl = None
 
-        # self.cuda(rank)
-        # print("CUDA DEVICE WITH RANK: ", self.device)
-
         #ANet and PNet
         self.a_net = ANet(im_chan=3)
         self.p_net = PNet(im_chan=3)
@@ -848,9 +845,9 @@ def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_outp
     weight_patch = 1
 
     # GAN_d_loss1
-    gan_d_loss_1 = gen_hinge_loss(fake_output_1, real_output_1)
+    gan_g_loss_1 = gen_hinge_loss(fake_output_1, real_output_1)
     # GAN_d_loss2
-    gan_d_loss_2 = gen_hinge_loss(fake_output_2, real_output_2)
+    gan_g_loss_2 = gen_hinge_loss(fake_output_2, real_output_2)
 
     patch_loss = get_patch_loss(I_dash_s_to_t, I_t, d_patch_model)
 
@@ -863,8 +860,13 @@ def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_outp
         get_perceptual_vgg_loss(vgg_model, I_dash_s_to_t, I_t)  # + \
     # weight_face * get_face_id_loss(I_dash_s_to_t, I_t, face_id_model, crop_size=mtcnn_crop_size)
 
+    # GAN_d_loss1
+    gan_d_loss_1 = hinge_loss(real_output_1, fake_output_1)
+    # GAN_d_loss2
+    gan_d_loss_2 = hinge_loss(real_output_2, fake_output_2)
+
     g_loss_total = rec_loss_1 + rec_loss_2 + \
-        gan_d_loss_1 + gan_d_loss_2 + patch_loss
+        gan_g_loss_1 + gan_g_loss_2 + gan_d_loss_1 + gan_d_loss_2 + patch_loss
     return g_loss_total
 
 
@@ -887,8 +889,8 @@ class Trainer():
         ttur_mult=2,
         rel_disc_loss=False,
         num_workers=None,
-        save_every=1000,
-        evaluate_every=1000,
+        save_every=500,
+        evaluate_every=500,
         num_image_tiles=8,
         trunc_psi=0.6,
         fp16=False,
@@ -1037,7 +1039,7 @@ class Trainer():
         if exists(self.logger):
             self.logger.set_params(self.hparams)
 
-        wandb.watch(self.GAN)  # Make wandb watch model
+        wandb.watch(self.GAN, log_freq=50)  # Make wandb watch model
 
     def write_config(self):
         self.config_path.write_text(json.dumps(self.config()))
@@ -1116,45 +1118,6 @@ class Trainer():
         mtcnn_crop_size = self.GAN.mtcnn_crop_size
 
         backwards = partial(loss_backwards, self.fp16)
-
-        # Not used
-        if exists(self.GAN.D_cl):
-            self.GAN.D_opt.zero_grad()
-
-            if apply_cl_reg_to_generated:
-                for i in range(self.gradient_accumulate_every):
-                    get_latents_fn = mixed_list if random() < self.mixed_prob else noise_list
-                    style = get_latents_fn(
-                        batch_size, num_layers, latent_dim, device=self.rank)
-                    noise = image_noise(
-                        batch_size, image_size, device=self.rank)
-
-                    w_space = latent_to_w(self.GAN.S, style)
-                    w_styles = styles_def_to_tensor(w_space)
-
-                    generated_images = self.GAN.G(w_styles, noise)
-                    self.GAN.D_cl(
-                        generated_images.clone().detach(), accumulate=True)
-
-            for i in range(self.gradient_accumulate_every):
-                (I_s, S_pose_map, S_texture_map), (I_t,
-                                                   T_pose_map) = next(self.loader)
-                I_s = I_s.cuda(self.rank)
-                S_pose_map = S_pose_map.cuda(self.rank)
-                S_texture_map = S_texture_map.cuda(self.rank)
-
-                I_t = I_t.cuda(self.rank)
-                T_pose_map = T_pose_map.cuda(self.rank)
-
-                image_batch = I_s
-
-                self.GAN.D_cl(image_batch, accumulate=True)
-
-            loss = self.GAN.D_cl.calculate_loss()
-            self.last_cr_loss = loss.clone().detach().item()
-            backwards(loss, self.GAN.D_opt, loss_id=0)
-
-            self.GAN.D_opt.step()
 
         # setup losses
 

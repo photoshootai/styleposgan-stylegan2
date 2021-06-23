@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 
 def main():
-    data_path = "./data/TrainingData"
+    data_path = "./data/DeepFashionWithFace"
     batch_size = 4
     num_workers = 1
     image_size = (512, 512)
