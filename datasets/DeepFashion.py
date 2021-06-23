@@ -4,6 +4,7 @@ import os
 import random
 
 from torchvision import transforms
+from torchvision.utils import save_image
 
 from torch.utils.data import Dataset
 from functools import partial
@@ -32,7 +33,7 @@ def convert_transparent_to_rgb(image):
 class scale_and_crop(object):
     def __init__(self, img_size: Tuple[int]) -> None:
         self.img_size = img_size
-        self.crop = transforms.RandomCrop(img_size)
+        # self.crop = transforms.RandomCrop(img_size)
 
     def __call__(self, image_tensor: torch.Tensor) -> torch.Tensor:
         _, h, w = image_tensor.shape  # should be applied after transforms.ToTensor()
@@ -44,8 +45,13 @@ class scale_and_crop(object):
         ratio = max_new_dim / min_img_dim
         scaled_size = ceil(h * ratio), ceil(w * ratio)
 
-        resize = transforms.Resize(scaled_size)
-        return self.crop(resize(image_tensor))
+        resized = transforms.Resize(scaled_size)(image_tensor)
+
+        _, h, w = resized.shape
+        mid = (w - new_w) // 2
+        cropped = resized[:, :new_h, mid:w - mid]
+
+        return cropped
 
 
 class expand_greyscale(object):
