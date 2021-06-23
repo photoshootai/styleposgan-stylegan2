@@ -860,13 +860,10 @@ def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_outp
         get_perceptual_vgg_loss(vgg_model, I_dash_s_to_t, I_t)  # + \
     # weight_face * get_face_id_loss(I_dash_s_to_t, I_t, face_id_model, crop_size=mtcnn_crop_size)
 
-    # GAN_d_loss1
-    gan_d_loss_1 = hinge_loss(real_output_1, fake_output_1)
-    # GAN_d_loss2
-    gan_d_loss_2 = hinge_loss(real_output_2, fake_output_2)
+
 
     g_loss_total = rec_loss_1 + rec_loss_2 + \
-        gan_g_loss_1 + gan_g_loss_2 + gan_d_loss_1 + gan_d_loss_2 + patch_loss
+        gan_g_loss_1 + gan_g_loss_2 + patch_loss
     return g_loss_total
 
 
