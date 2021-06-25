@@ -11,6 +11,7 @@ https://drive.google.com/uc?id=1R6DnSBPDLxboyHNRkaR6gTtyRE-ZODGn
 gdown https://drive.google.com/uc?id=1R6DnSBPDLxboyHNRkaR6gTtyRE-ZODGn
 
 1R6DnSBPDLxboyHNRkaR6gTtyRE-ZODGn
+gdown https://drive.google.com/uc?id=10zyjNV11e4X4qDMztws9wtNivaxv4qof
 #Extract Data
 !mkdir './styleposgan-stylegan2/data'
 !unzip -qq '' -d './styleposgan-stylegan2/data'
