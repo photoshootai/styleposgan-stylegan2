@@ -76,7 +76,7 @@ def run_training(rank, world_size, model_args, data, load_from, new, num_train_s
 def train_from_folder(
     data='./data',
     results_dir='./results',
-    models_dir='./checkpoints',
+    models_dir='./models',
     name='default',
     new=False,
     load_from=-1,

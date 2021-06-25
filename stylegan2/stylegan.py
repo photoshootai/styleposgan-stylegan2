@@ -620,7 +620,7 @@ class Generator(nn.Module):
             self.blocks.append(block)
 
         print("Generator Initialized with: ", {"image_size": self.image_size, "latent_dim": self.latent_dim, "num_blocks": len(self.blocks),
-                                               "attn_layers": [l.size() for l in self.attns if l is not None]
+                                               "attn_layers": len(self.attns)
                                                })
 
     # Added s_input as an additional argument to forward
