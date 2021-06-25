@@ -1032,8 +1032,8 @@ class Trainer():
             self.p_net_ddp = DDP(self.GAN.p_net, **ddp_kwargs)
             self.d_patch_ddp = DDP(self.GAN.d_patch, **ddp_kwargs)
 
-            self.vgg_ddp = DDP(self.GAN.vgg, **ddp_kwargs)
-            self.face_id_ddp = DDP(self.GAN.face_id, **ddp_kwargs)
+            self.vgg_ddp = self.GAN.vgg #DDP(self.GAN.vgg, **ddp_kwargs)
+            self.face_id_ddp = self.GAN.face_id # DDP(self.GAN.face_id, **ddp_kwargs)
 
         if exists(self.logger):
             self.logger.set_params(self.hparams)

@@ -7,10 +7,10 @@ rsync -P ./DeepFashionWithFace user@
 or 
 
 pip install gdown 
+https://drive.google.com/uc?id=1R6DnSBPDLxboyHNRkaR6gTtyRE-ZODGn
+gdown https://drive.google.com/uc?id=1R6DnSBPDLxboyHNRkaR6gTtyRE-ZODGn
 
-gdown "https://drive.google.com/file/d/1R6DnSBPDLxboyHNRkaR6gTtyRE-ZODGn/view?usp=sharing"
-
-
+1R6DnSBPDLxboyHNRkaR6gTtyRE-ZODGn
 #Extract Data
 !mkdir './styleposgan-stylegan2/data'
 !unzip -qq '' -d './styleposgan-stylegan2/data'
