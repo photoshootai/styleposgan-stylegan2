@@ -1036,7 +1036,7 @@ class Trainer():
         if exists(self.logger):
             self.logger.set_params(self.hparams)
 
-        wandb.watch(self.GAN, log_freq=50)  # Make wandb watch model
+        # wandb.watch(self.GAN, log_freq=50)  # Make wandb watch model
 
     def write_config(self):
         self.config_path.write_text(json.dumps(self.config()))
@@ -1376,8 +1376,8 @@ class Trainer():
         torchvision.utils.save_image(generated_images, str(
             self.results_dir / self.name / f'{str(num)}.{ext}'), nrow=num_rows)
 
-        images = wandb.Image(generated_images, caption="Generations Regular")
-        wandb.log({"generations_regular": images})
+        # images = wandb.Image(generated_images, caption="Generations Regular")
+        # wandb.log({"generations_regular": images})
 
         # moving averages
 
@@ -1385,8 +1385,8 @@ class Trainer():
         torchvision.utils.save_image(generated_images, str(
             self.results_dir / self.name / f'{str(num)}-ema.{ext}'), nrow=num_rows)
 
-        images = wandb.Image(generated_images, caption="Generations EMA")
-        wandb.log({"generations_ema": images})
+        # images = wandb.Image(generated_images, caption="Generations EMA")
+        # wandb.log({"generations_ema": images})
 
         """
         Don't need mixed regularities
@@ -1557,7 +1557,7 @@ class Trainer():
         print(log)
 
     def track(self, value, name):
-        wandb.log({name: value})  # Log with Wandb
+        # wandb.log({name: value})  # Log with Wandb
         if not exists(self.logger):
             return
         self.logger.track(value, name=name)
