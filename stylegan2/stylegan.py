@@ -1184,7 +1184,7 @@ class Trainer():
                 fake_output_loss_2 = fake_output_loss_2 - real_output_2.mean()
 
             # divergence = D_loss_fn(real_output_loss, fake_output_loss)
-            divergence = get_d_total_loss(I_t, I_dash_s_to_t, real_output_loss_1,
+            divergence = get_d_total_loss(I_t.clone().detach(), I_dash_s_to_t, real_output_loss_1,
                                           fake_output_loss_1, real_output_loss_2, fake_output_loss_2, d_patch)
             disc_loss = divergence
 

@@ -46,3 +46,4 @@ tb_logs/
 /wandb
 /results
 /fid
+/models/*/
