@@ -786,6 +786,8 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
 
         self.cuda(rank)
 
+        print("StyleGAN2 initialized with args: ", {"image_size": image_size, "latent_dim" :latent_dim, "mtcnn_crop_size":mtcnn_crop_size, "fmap_max":fmap_max, "network_capacity":network_capacity, "attn_layers": attn_layers, "rank":rank})
+
         # startup apex mixed precision
         self.fp16 = fp16
         if fp16:
@@ -1132,7 +1134,7 @@ class Trainer():
         avg_pl_length = self.pl_mean
         self.GAN.D_opt.zero_grad()
 
-        for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[D_aug, G, a_net, p_net, d_patch]):
+        for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[D_aug, G, a_net, p_net, d_patch, vgg_model, face_id_model]):
 
             noise = image_noise(batch_size, image_size, device=self.rank)
 
