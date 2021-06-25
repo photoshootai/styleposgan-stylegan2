@@ -1134,7 +1134,7 @@ class Trainer():
         avg_pl_length = self.pl_mean
         self.GAN.D_opt.zero_grad()
 
-        for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[D_aug, G, a_net, p_net, d_patch, vgg_model, face_id_model]):
+        for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[D_aug, G, a_net, p_net, d_patch]):
 
             noise = image_noise(batch_size, image_size, device=self.rank)
 
@@ -1226,7 +1226,7 @@ class Trainer():
 
         self.GAN.G_opt.zero_grad()
 
-        for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[G, D_aug, a_net, p_net, d_patch, vgg_model, face_id_model]):
+        for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[G, D_aug, a_net, p_net, d_patch]):
 
             (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
             I_s = I_s.cuda(self.rank)
