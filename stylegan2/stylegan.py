@@ -43,6 +43,7 @@ from models import ANet, PNet
 
 from losses import VGG16Perceptual, FaceIDLoss
 
+torch.autograd.set_detect_anomaly(True)
 try:
     from apex import amp
     APEX_AVAILABLE = True
