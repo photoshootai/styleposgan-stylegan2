@@ -14,7 +14,6 @@ import torch.multiprocessing as mp
 import torch.distributed as dist
 
 import numpy as np
-import wandb
 
 
 def cast_list(el):
@@ -190,6 +189,7 @@ def train_from_folder(
                      new, num_train_steps, name, seed)
         return
 
+    print("Running Multi-GPUs")
     mp.spawn(run_training,
              args=(world_size, model_args, data, load_from,
                    new, num_train_steps, name, seed),
@@ -198,7 +198,6 @@ def train_from_folder(
 
 
 def main():
-    wandb.init(project="stylegan2-edit")
     fire.Fire(train_from_folder)
 
 

@@ -1,7 +1,6 @@
 import os
 import math
 import json
-import wandb
 
 from tqdm import tqdm
 from math import floor, log2
@@ -43,6 +42,8 @@ from models import ANet, PNet
 
 from losses import VGG16Perceptual, FaceIDLoss
 
+#torch.autograd.set_detect_anomaly(True)
+import wandb
 try:
     from apex import amp
     APEX_AVAILABLE = True
@@ -786,6 +787,8 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
 
         self.cuda(rank)
 
+        print("StyleGAN2 initialized with args: ", {"image_size": image_size, "latent_dim" :latent_dim, "mtcnn_crop_size":mtcnn_crop_size, "fmap_max":fmap_max, "network_capacity":network_capacity, "attn_layers": attn_layers, "rank":rank})
+
         # startup apex mixed precision
         self.fp16 = fp16
         if fp16:
@@ -888,7 +891,7 @@ class Trainer():
         num_workers=None,
         save_every=500,
         evaluate_every=500,
-        num_image_tiles=8,
+        num_image_tiles=4,
         trunc_psi=0.6,
         fp16=False,
         cl_reg=False,
@@ -951,7 +954,7 @@ class Trainer():
         self.num_workers = num_workers
         self.mixed_prob = mixed_prob
 
-        self.num_image_tiles = num_image_tiles
+        self.num_image_tiles = batch_size
         self.evaluate_every = evaluate_every
         self.save_every = save_every
         self.steps = 0
@@ -999,7 +1002,16 @@ class Trainer():
         self.rank = rank
         self.world_size = world_size
 
-        self.logger = aim.Session(experiment=name) if log else None
+        h_params = {'image_size': self.image_size, 
+                    'network_capacity': self.network_capacity,
+                    "fmap_max":self.fmap_max,
+                    "batch_size": self.batch_size,
+                    "gradient_accumulate_every":self.gradient_accumulate_every,
+                    "lr":self.lr,
+                    "fp16":self.fp16
+                    }
+
+        self.logger = wandb.init(project="stylegan2-edit", config=h_params) if log and self.is_main else None
 
     @property
     def image_extension(self):
@@ -1019,7 +1031,7 @@ class Trainer():
                              transparent=self.transparent, fq_layers=self.fq_layers, fq_dict_size=self.fq_dict_size, attn_layers=self.attn_layers, fp16=self.fp16, cl_reg=self.cl_reg, rank=self.rank, *args, **kwargs)
 
         if self.is_ddp:
-            ddp_kwargs = {'device_ids': [self.rank]}
+            ddp_kwargs = {'device_ids': [self.rank], 'broadcast_buffers': False}
 
             self.G_ddp = DDP(self.GAN.G, **ddp_kwargs)
             self.D_ddp = DDP(self.GAN.D, **ddp_kwargs)
@@ -1030,13 +1042,13 @@ class Trainer():
             self.p_net_ddp = DDP(self.GAN.p_net, **ddp_kwargs)
             self.d_patch_ddp = DDP(self.GAN.d_patch, **ddp_kwargs)
 
-            self.vgg_ddp = DDP(self.GAN.vgg, **ddp_kwargs)
-            self.face_id_ddp = DDP(self.GAN.face_id, **ddp_kwargs)
+            self.vgg_ddp = self.GAN.vgg #DDP(self.GAN.vgg, **ddp_kwargs)
+            self.face_id_ddp = self.GAN.face_id # DDP(self.GAN.face_id, **ddp_kwargs)
 
         if exists(self.logger):
-            self.logger.set_params(self.hparams)
+            self.logger.watch(self.GAN)
+ 
 
-        wandb.watch(self.GAN, log_freq=50)  # Make wandb watch model
 
     def write_config(self):
         self.config_path.write_text(json.dumps(self.config()))
@@ -1224,7 +1236,7 @@ class Trainer():
 
         self.GAN.G_opt.zero_grad()
 
-        for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[G, D_aug, a_net, p_net, d_patch, vgg_model, face_id_model]):
+        for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[G, D_aug, a_net, p_net, d_patch]):
 
             (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
             I_s = I_s.cuda(self.rank)
@@ -1328,7 +1340,7 @@ class Trainer():
             if self.steps % self.save_every == 0:
                 self.save(self.checkpoint_num)
 
-            if self.steps % self.evaluate_every == 0 or (self.steps % 100 == 0 and self.steps < 2500):
+            if self.steps % self.evaluate_every == 0 or (self.steps % 125 == 0 and self.steps < 2500):
                 print("Evaluating and saving images")
                 self.evaluate(floor(self.steps / self.evaluate_every))
 
@@ -1356,6 +1368,7 @@ class Trainer():
         image_size = self.GAN.G.image_size
         num_layers = self.GAN.G.num_layers
 
+
         # Get batch inputs
         (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
         I_s = I_s.cuda(self.rank)
@@ -1364,29 +1377,31 @@ class Trainer():
         I_t = I_t.cuda(self.rank)
         T_pose_map = T_pose_map.cuda(self.rank)
 
+        batch_size = I_t.shape[0]
+
         # Get encodings
         E_t = self.GAN.p_net(T_pose_map)
         z_s = self.GAN.a_net(S_texture_map).expand(-1, num_layers, -1)
 
-        n = image_noise(num_rows ** 2, image_size, device=self.rank)
+        noise = image_noise(batch_size, image_size, device=self.rank)
 
         # regular
 
-        generated_images = self.generate_truncated(self.GAN.G, z_s, n, E_t)
+        generated_images = self.generate_truncated(self.GAN.G, z_s, noise, E_t)
         torchvision.utils.save_image(generated_images, str(
-            self.results_dir / self.name / f'{str(num)}.{ext}'), nrow=num_rows)
+            self.results_dir / self.name / f'{str(num)}.{ext}'), nrow=batch_size)
 
         images = wandb.Image(generated_images, caption="Generations Regular")
-        wandb.log({"generations_regular": images})
+        self.track(images, "generations_regular")
 
         # moving averages
 
-        generated_images = self.generate_truncated(self.GAN.GE, z_s, n, E_t)
+        generated_images = self.generate_truncated(self.GAN.GE, z_s, noise, E_t)
         torchvision.utils.save_image(generated_images, str(
-            self.results_dir / self.name / f'{str(num)}-ema.{ext}'), nrow=num_rows)
+            self.results_dir / self.name / f'{str(num)}-ema.{ext}'), nrow=batch_size)
 
         images = wandb.Image(generated_images, caption="Generations EMA")
-        wandb.log({"generations_ema": images})
+        self.track(images, "generations_ema")
 
         """
         Don't need mixed regularities
@@ -1557,10 +1572,9 @@ class Trainer():
         print(log)
 
     def track(self, value, name):
-        wandb.log({name: value})  # Log with Wandb
         if not exists(self.logger):
             return
-        self.logger.track(value, name=name)
+        self.logger.log({name: value})
 
     def model_name(self, num):
         return str(self.models_dir / self.name / f'model_{num}.pt')

@@ -18,10 +18,10 @@ class ResidualBlock(nn.Module):
     def __init__(self, in_chan, out_chan, kernel_size=(3,3), stride=2, padding=1, bias=False):
         super(ResidualBlock, self).__init__()
         self.res_conv1 = nn.Conv2d(in_chan, out_chan, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias)
-        self.res_bn1 = nn.BatchNorm2d(out_chan)
+        self.res_bn1 = nn.BatchNorm2d(out_chan, track_running_stats=True)
         self.res_relu1 = nn.ReLU(inplace=True)
         self.res_conv2 = nn.Conv2d(out_chan, out_chan, kernel_size=kernel_size, stride=1, padding=padding, bias=bias)
-        self.res_bn2 = nn.BatchNorm2d(out_chan)
+        self.res_bn2 = nn.BatchNorm2d(out_chan, track_running_stats=True)
         self.skip_conv = nn.Conv2d(in_chan, out_chan, kernel_size=(1,1), stride=stride, padding=0, bias=bias)# this conv will make the sizes of input and output match as specified by He et al.
         self.res_relu2 = nn.ReLU(inplace=True)
 

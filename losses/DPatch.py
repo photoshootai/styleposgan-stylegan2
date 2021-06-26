@@ -29,7 +29,7 @@ class DPatch(torch.nn.Module):
             n_filters = min(n_filters * 2, 512)
             sequence += [
                 torch.nn.Conv2d(n_filters_prev, n_filters, kernel_size=kernel_size, stride=stride, padding=pad_size),
-                torch.nn.BatchNorm2d(n_filters),
+                torch.nn.BatchNorm2d(n_filters, track_running_stats=True),
                 torch.nn.LeakyReLU(ReLU_slope, True)
             ]
 
@@ -37,7 +37,7 @@ class DPatch(torch.nn.Module):
         n_filters = min(n_filters * 2, 512)
         sequence += [
             torch.nn.Conv2d(n_filters_prev, n_filters, kernel_size=kernel_size, stride=1, padding=pad_size),
-            torch.nn.BatchNorm2d(n_filters),
+            torch.nn.BatchNorm2d(n_filters, track_running_stats=True),
             torch.nn.LeakyReLU(ReLU_slope, True)
         ]
 
