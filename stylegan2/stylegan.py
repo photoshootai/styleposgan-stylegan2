@@ -1002,7 +1002,16 @@ class Trainer():
         self.rank = rank
         self.world_size = world_size
 
-        self.logger = aim.Session(experiment=name) if log else None
+        h_params = {'image_size': self.image_size, 
+                    'network_capacity': self.network_capacity,
+                    "fmap_max":self.fmap_max,
+                    "batch_size": self.batch_size,
+                    "gradient_accumulate_every":self.gradient_accumulate_every,
+                    "lr":self.lr,
+                    "fp16":self.fp16
+                    }
+
+        self.logger = wandb.init(project="stylegan2-edit", config=h_params) if log else None
 
     @property
     def image_extension(self):
@@ -1037,10 +1046,9 @@ class Trainer():
             self.face_id_ddp = self.GAN.face_id # DDP(self.GAN.face_id, **ddp_kwargs)
 
         if exists(self.logger):
-            self.logger.set_params(self.hparams)
-        
-        if self.is_main:
-            wandb.watch(self.GAN, log_freq=50)  # Make wandb watch model
+            self.logger.watch(self.GAN)
+ 
+
 
     def write_config(self):
         self.config_path.write_text(json.dumps(self.config()))
@@ -1381,7 +1389,7 @@ class Trainer():
             self.results_dir / self.name / f'{str(num)}.{ext}'), nrow=num_rows)
 
         images = wandb.Image(generated_images, caption="Generations Regular")
-        wandb.log({"generations_regular": images})
+        self.track(images, "generations_regular")
 
         # moving averages
 
@@ -1390,7 +1398,7 @@ class Trainer():
             self.results_dir / self.name / f'{str(num)}-ema.{ext}'), nrow=num_rows)
 
         images = wandb.Image(generated_images, caption="Generations EMA")
-        wandb.log({"generations_ema": images})
+        self.track(images, "generations_ema")
 
         """
         Don't need mixed regularities
@@ -1561,11 +1569,9 @@ class Trainer():
         print(log)
 
     def track(self, value, name):
-        if self.is_main:
-            wandb.log({name: value})  # Log with Wandb
         if not exists(self.logger):
             return
-        self.logger.track(value, name=name)
+        self.logger.log({name: value})
 
     def model_name(self, num):
         return str(self.models_dir / self.name / f'model_{num}.pt')
