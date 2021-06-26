@@ -1357,6 +1357,7 @@ class Trainer():
         image_size = self.GAN.G.image_size
         num_layers = self.GAN.G.num_layers
 
+
         # Get batch inputs
         (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
         I_s = I_s.cuda(self.rank)
@@ -1365,26 +1366,31 @@ class Trainer():
         I_t = I_t.cuda(self.rank)
         T_pose_map = T_pose_map.cuda(self.rank)
 
+        batch_size = I_t.shape[0]
+
         # Get encodings
         E_t = self.GAN.p_net(T_pose_map)
         z_s = self.GAN.a_net(S_texture_map).expand(-1, num_layers, -1)
 
-        n = image_noise(self.batch_size, image_size, device=self.rank)
+        noise = image_noise(batch_size, image_size, device=self.rank)
 
+
+        print("Noise size: ", noise.size())
+        print("E_t size: ", E_t.size())
         # regular
 
-        generated_images = self.generate_truncated(self.GAN.G, z_s, n, E_t)
+        generated_images = self.generate_truncated(self.GAN.G, z_s, noise, E_t)
         torchvision.utils.save_image(generated_images, str(
-            self.results_dir / self.name / f'{str(num)}.{ext}'), nrow=num_rows)
+            self.results_dir / self.name / f'{str(num)}.{ext}'), nrow=batch_size)
 
         # images = wandb.Image(generated_images, caption="Generations Regular")
         # wandb.log({"generations_regular": images})
 
         # moving averages
 
-        generated_images = self.generate_truncated(self.GAN.GE, z_s, n, E_t)
+        generated_images = self.generate_truncated(self.GAN.GE, z_s, noise, E_t)
         torchvision.utils.save_image(generated_images, str(
-            self.results_dir / self.name / f'{str(num)}-ema.{ext}'), nrow=num_rows)
+            self.results_dir / self.name / f'{str(num)}-ema.{ext}'), nrow=batch_size)
 
         # images = wandb.Image(generated_images, caption="Generations EMA")
         # wandb.log({"generations_ema": images})
