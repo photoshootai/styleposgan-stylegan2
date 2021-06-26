@@ -1022,7 +1022,7 @@ class Trainer():
                              transparent=self.transparent, fq_layers=self.fq_layers, fq_dict_size=self.fq_dict_size, attn_layers=self.attn_layers, fp16=self.fp16, cl_reg=self.cl_reg, rank=self.rank, *args, **kwargs)
 
         if self.is_ddp:
-            ddp_kwargs = {'device_ids': [self.rank]}
+            ddp_kwargs = {'device_ids': [self.rank], 'broadcast_buffers': False}
 
             self.G_ddp = DDP(self.GAN.G, **ddp_kwargs)
             self.D_ddp = DDP(self.GAN.D, **ddp_kwargs)
