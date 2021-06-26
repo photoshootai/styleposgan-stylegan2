@@ -1,7 +1,6 @@
 import os
 import math
 import json
-import wandb
 
 from tqdm import tqdm
 from math import floor, log2
@@ -1039,8 +1038,6 @@ class Trainer():
         if exists(self.logger):
             self.logger.set_params(self.hparams)
         
-        if self.is_main:
-            wandb.watch(self.GAN, log_freq=50)  # Make wandb watch model
 
     def write_config(self):
         self.config_path.write_text(json.dumps(self.config()))
@@ -1372,7 +1369,7 @@ class Trainer():
         E_t = self.GAN.p_net(T_pose_map)
         z_s = self.GAN.a_net(S_texture_map).expand(-1, num_layers, -1)
 
-        n = image_noise(num_rows ** 2, image_size, device=self.rank)
+        n = image_noise(self.batch_size, image_size, device=self.rank)
 
         # regular
 
@@ -1380,8 +1377,8 @@ class Trainer():
         torchvision.utils.save_image(generated_images, str(
             self.results_dir / self.name / f'{str(num)}.{ext}'), nrow=num_rows)
 
-        images = wandb.Image(generated_images, caption="Generations Regular")
-        wandb.log({"generations_regular": images})
+        # images = wandb.Image(generated_images, caption="Generations Regular")
+        # wandb.log({"generations_regular": images})
 
         # moving averages
 
@@ -1389,8 +1386,8 @@ class Trainer():
         torchvision.utils.save_image(generated_images, str(
             self.results_dir / self.name / f'{str(num)}-ema.{ext}'), nrow=num_rows)
 
-        images = wandb.Image(generated_images, caption="Generations EMA")
-        wandb.log({"generations_ema": images})
+        # images = wandb.Image(generated_images, caption="Generations EMA")
+        # wandb.log({"generations_ema": images})
 
         """
         Don't need mixed regularities
@@ -1561,8 +1558,6 @@ class Trainer():
         print(log)
 
     def track(self, value, name):
-        if self.is_main:
-            wandb.log({name: value})  # Log with Wandb
         if not exists(self.logger):
             return
         self.logger.track(value, name=name)
