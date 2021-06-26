@@ -1374,9 +1374,6 @@ class Trainer():
 
         noise = image_noise(batch_size, image_size, device=self.rank)
 
-
-        print("Noise size: ", noise.size())
-        print("E_t size: ", E_t.size())
         # regular
 
         generated_images = self.generate_truncated(self.GAN.G, z_s, noise, E_t)
