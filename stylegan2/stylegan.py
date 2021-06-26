@@ -42,7 +42,7 @@ from models import ANet, PNet
 
 from losses import VGG16Perceptual, FaceIDLoss
 
-torch.autograd.set_detect_anomaly(True)
+#torch.autograd.set_detect_anomaly(True)
 import wandb
 try:
     from apex import amp
