@@ -1038,8 +1038,9 @@ class Trainer():
 
         if exists(self.logger):
             self.logger.set_params(self.hparams)
-
-        wandb.watch(self.GAN, log_freq=50)  # Make wandb watch model
+        
+        if self.is_main:
+            wandb.watch(self.GAN, log_freq=50)  # Make wandb watch model
 
     def write_config(self):
         self.config_path.write_text(json.dumps(self.config()))
@@ -1560,7 +1561,8 @@ class Trainer():
         print(log)
 
     def track(self, value, name):
-        wandb.log({name: value})  # Log with Wandb
+        if self.is_main:
+            wandb.log({name: value})  # Log with Wandb
         if not exists(self.logger):
             return
         self.logger.track(value, name=name)
