@@ -199,7 +199,7 @@ def train_from_folder(
 
 
 def main():
-    # wandb.init(project="stylegan2-edit")
+    wandb.init(project="stylegan2-edit")
     fire.Fire(train_from_folder)
 
 

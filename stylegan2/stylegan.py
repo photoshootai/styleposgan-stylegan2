@@ -891,7 +891,7 @@ class Trainer():
         num_workers=None,
         save_every=500,
         evaluate_every=500,
-        num_image_tiles=8,
+        num_image_tiles=4,
         trunc_psi=0.6,
         fp16=False,
         cl_reg=False,
@@ -954,7 +954,7 @@ class Trainer():
         self.num_workers = num_workers
         self.mixed_prob = mixed_prob
 
-        self.num_image_tiles = num_image_tiles
+        self.num_image_tiles = batch_size
         self.evaluate_every = evaluate_every
         self.save_every = save_every
         self.steps = 0
@@ -1039,7 +1039,7 @@ class Trainer():
         if exists(self.logger):
             self.logger.set_params(self.hparams)
 
-        # wandb.watch(self.GAN, log_freq=50)  # Make wandb watch model
+        wandb.watch(self.GAN, log_freq=50)  # Make wandb watch model
 
     def write_config(self):
         self.config_path.write_text(json.dumps(self.config()))
@@ -1331,7 +1331,7 @@ class Trainer():
             if self.steps % self.save_every == 0:
                 self.save(self.checkpoint_num)
 
-            if self.steps % self.evaluate_every == 0 or (self.steps % 100 == 0 and self.steps < 2500):
+            if self.steps % self.evaluate_every == 0 or (self.steps % 125 == 0 and self.steps < 2500):
                 print("Evaluating and saving images")
                 self.evaluate(floor(self.steps / self.evaluate_every))
 
@@ -1379,8 +1379,8 @@ class Trainer():
         torchvision.utils.save_image(generated_images, str(
             self.results_dir / self.name / f'{str(num)}.{ext}'), nrow=num_rows)
 
-        # images = wandb.Image(generated_images, caption="Generations Regular")
-        # wandb.log({"generations_regular": images})
+        images = wandb.Image(generated_images, caption="Generations Regular")
+        wandb.log({"generations_regular": images})
 
         # moving averages
 
@@ -1388,8 +1388,8 @@ class Trainer():
         torchvision.utils.save_image(generated_images, str(
             self.results_dir / self.name / f'{str(num)}-ema.{ext}'), nrow=num_rows)
 
-        # images = wandb.Image(generated_images, caption="Generations EMA")
-        # wandb.log({"generations_ema": images})
+        images = wandb.Image(generated_images, caption="Generations EMA")
+        wandb.log({"generations_ema": images})
 
         """
         Don't need mixed regularities
@@ -1560,7 +1560,7 @@ class Trainer():
         print(log)
 
     def track(self, value, name):
-        # wandb.log({name: value})  # Log with Wandb
+        wandb.log({name: value})  # Log with Wandb
         if not exists(self.logger):
             return
         self.logger.track(value, name=name)
