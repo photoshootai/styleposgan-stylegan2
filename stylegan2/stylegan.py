@@ -1011,7 +1011,7 @@ class Trainer():
                     "fp16":self.fp16
                     }
 
-        self.logger = wandb.init(project="stylegan2-edit", config=h_params) if log else None
+        self.logger = wandb.init(project="stylegan2-edit", config=h_params) if log and self.is_main else None
 
     @property
     def image_extension(self):
