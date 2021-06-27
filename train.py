@@ -14,6 +14,7 @@ import torch.multiprocessing as mp
 import torch.distributed as dist
 
 import numpy as np
+import wandb
 
 
 def cast_list(el):
@@ -34,7 +35,7 @@ def set_seed(seed):
     random.seed(seed)
 
 
-def run_training(rank, world_size, model_args, data, load_from, new, num_train_steps, name, seed):
+def run_training(rank, world_size, model_args, data, load_from, new, num_train_steps, name, seed, wandb_logger):
     is_main = rank == 0
     is_ddp = world_size > 1
 
@@ -52,7 +53,7 @@ def run_training(rank, world_size, model_args, data, load_from, new, num_train_s
         world_size=world_size
     )
 
-    model = Trainer(**model_args)
+    model = Trainer(wandb_logger=wandb_logger, **model_args)
 
     if not new:
         model.load(load_from)
@@ -184,15 +185,18 @@ def train_from_folder(
 
     world_size = torch.cuda.device_count()
 
+    #Logger setup
+    wandb_logger =  wandb.init(project="stylegan2-edit") if log else None
+
     if world_size == 1 or not multi_gpus:
         run_training(0, 1, model_args, data, load_from,
-                     new, num_train_steps, name, seed)
+                     new, num_train_steps, name, seed, wandb_logger)
         return
 
     print("Running Multi-GPUs")
     mp.spawn(run_training,
              args=(world_size, model_args, data, load_from,
-                   new, num_train_steps, name, seed),
+                   new, num_train_steps, name, seed, wandb_logger),
              nprocs=world_size,
              join=True)
 

@@ -873,6 +873,7 @@ def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_outp
 class Trainer():
     def __init__(
         self,
+        wandb_logger=None,
         name='default',
         results_dir='results',
         models_dir='models',
@@ -1011,7 +1012,10 @@ class Trainer():
                     "fp16":self.fp16
                     }
 
-        self.logger = wandb.init(project="stylegan2-edit", config=h_params) if log and self.is_main else None
+        self.logger = wandb_logger if self.is_main else None
+        if exists(self.logger):
+            wandb.config.update(h_params)
+            print("Initialized WandB Logger on main process with config")
 
     @property
     def image_extension(self):
