@@ -1225,10 +1225,11 @@ class Trainer():
             disc_loss.register_hook(raise_if_nan)
             backwards(disc_loss, self.GAN.D_opt, loss_id=1)
 
-            total_disc_loss += divergence.detach().item() / self.gradient_accumulate_every
+            total_disc_loss = total_disc_loss + torch.div(divergence.detach(), self.gradient_accumulate_every)
 
-        self.d_loss = float(total_disc_loss)
-        self.track(self.d_loss, 'D')
+        self.d_loss = float(total_disc_loss.item())
+        if (self.steps % 5 == 0):
+            self.track(self.d_loss, 'D') 
 
         self.GAN.D_opt.step()
 
@@ -1295,7 +1296,7 @@ class Trainer():
 
             if apply_path_penalty:
                 pl_lengths = calc_pl_lengths(z_s, I_dash_s)
-                avg_pl_length = np.mean(pl_lengths.detach().cpu().numpy())
+                avg_pl_length = torch.mean(pl_lengths.detach())
 
                 if not is_empty(self.pl_mean):
                     pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
@@ -1306,16 +1307,17 @@ class Trainer():
             gen_loss.register_hook(raise_if_nan)
             backwards(gen_loss, self.GAN.G_opt, loss_id=2)
 
-            total_gen_loss += loss.detach().item() / self.gradient_accumulate_every
+            total_gen_loss = total_gen_loss + torch.div(loss.detach(), self.gradient_accumulate_every)
 
-        self.g_loss = float(total_gen_loss)
-        self.track(self.g_loss, 'G')
+        self.g_loss = float(total_gen_loss.item())
+        if (self.steps % 5 == 0):
+            self.track(self.g_loss, 'G')
 
         self.GAN.G_opt.step()
 
         # calculate moving averages
 
-        if apply_path_penalty and not np.isnan(avg_pl_length):
+        if apply_path_penalty and not torch.isnan(avg_pl_length):
             self.pl_mean = self.pl_length_ma.update_average(
                 self.pl_mean, avg_pl_length)
             self.track(self.pl_mean, 'PL')
