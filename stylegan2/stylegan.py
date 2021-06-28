@@ -44,11 +44,9 @@ from losses import VGG16Perceptual, FaceIDLoss
 
 #torch.autograd.set_detect_anomaly(True)
 import wandb
-try:
-    from apex import amp
-    APEX_AVAILABLE = True
-except:
-    APEX_AVAILABLE = False
+
+from torch.cuda.amp import autocast, GradScaler
+
 
 assert torch.cuda.is_available(), 'You need to have an Nvidia GPU with CUDA installed.'
 
@@ -240,25 +238,30 @@ def gradient_accumulate_contexts(gradient_accumulate_every, is_ddp, ddps):
         with context():
             yield
 
+def safe_div(n, d):
+    try:
+        res = n / d
+    except ZeroDivisionError:
+        prefix = '' if int(n >= 0) else '-'
+        res = float(f'{prefix}inf')
+    return res
+# def loss_backwards(amp, loss, optimizer, loss_id, **kwargs):
+#     if amp:
+#         with amp.scale_loss(loss, optimizer, loss_id) as scaled_loss:
+#             scaled_loss.backward(**kwargs)
+#     else:
+#         loss.backward(**kwargs)
 
-def loss_backwards(fp16, loss, optimizer, loss_id, **kwargs):
-    if fp16:
-        with amp.scale_loss(loss, optimizer, loss_id) as scaled_loss:
-            scaled_loss.backward(**kwargs)
-    else:
-        loss.backward(**kwargs)
 
+# def gradient_penalty(images, output, amp_enabled, weight=10):
+#     batch_size = images.shape[0]
+#     gradients = torch_grad(outputs=output, inputs=images,
+#                            grad_outputs=torch.ones(
+#                                output.size(), device=images.device),
+#                            create_graph=True, retain_graph=True, only_inputs=True)[0]
 
-def gradient_penalty(images, output, weight=10):
-    batch_size = images.shape[0]
-    # print('Shape of Daug', output.shape)
-    gradients = torch_grad(outputs=output, inputs=images,
-                           grad_outputs=torch.ones(
-                               output.size(), device=images.device),
-                           create_graph=True, retain_graph=True, only_inputs=True)[0]
-
-    gradients = gradients.reshape(batch_size, -1)
-    return weight * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+#     gradients = gradients.reshape(batch_size, -1)
+#     return weight * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
 
 
 def calc_pl_lengths(styles, images):
@@ -734,7 +737,7 @@ class Discriminator(nn.Module):
 
 
 class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
-    def __init__(self, image_size, latent_dim=2048, mtcnn_crop_size=160, fmap_max=512, style_depth=8, network_capacity=16, transparent=False, fp16=False, cl_reg=False, steps=1, lr=1e-4, ttur_mult=2, fq_layers=[], fq_dict_size=256, attn_layers=[], no_const=False, lr_mlp=0.1, rank=0):
+    def __init__(self, image_size, latent_dim=2048, mtcnn_crop_size=160, fmap_max=512, style_depth=8, network_capacity=16, transparent=False, amp=False, cl_reg=False, steps=1, lr=1e-4, ttur_mult=2, fq_layers=[], fq_dict_size=256, attn_layers=[], no_const=False, lr_mlp=0.1, rank=0):
         super().__init__()
         self.lr = lr
         self.steps = steps
@@ -789,11 +792,11 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
 
         print("StyleGAN2 initialized with args: ", {"image_size": image_size, "latent_dim" :latent_dim, "mtcnn_crop_size":mtcnn_crop_size, "fmap_max":fmap_max, "network_capacity":network_capacity, "attn_layers": attn_layers, "rank":rank})
 
-        # startup apex mixed precision
-        self.fp16 = fp16
-        if fp16:
-            (self.G, self.D, self.GE, self.a_net, self.p_net, self.d_patch, self.vgg, self.face_id), (self.G_opt, self.D_opt) = amp.initialize(
-                [self.G, self.D, self.GE, self.a_net, self.p_net, self.d_patch, self.vgg, self.face_id], [self.G_opt, self.D_opt], opt_level='O1', num_losses=3)
+        # # startup apex mixed precision
+        # self.amp = amp
+        # if amp:
+        #     (self.G, self.D, self.GE, self.a_net, self.p_net, self.d_patch, self.vgg, self.face_id), (self.G_opt, self.D_opt) = amp.initialize(
+        #         [self.G, self.D, self.GE, self.a_net, self.p_net, self.d_patch, self.vgg, self.face_id], [self.G_opt, self.D_opt], opt_level='O1', num_losses=3)
 
     def _init_weights(self):
         for m in self.modules():
@@ -894,7 +897,7 @@ class Trainer():
         evaluate_every=500,
         num_image_tiles=4,
         trunc_psi=0.6,
-        fp16=False,
+        amp=False,
         cl_reg=False,
         no_pl_reg=False,
         fq_layers=[],
@@ -968,8 +971,7 @@ class Trainer():
 
         self.gradient_accumulate_every = gradient_accumulate_every
 
-        assert not fp16 or fp16 and APEX_AVAILABLE, 'Apex is not available for you to use mixed precision training'
-        self.fp16 = fp16
+    
 
         self.cl_reg = cl_reg
 
@@ -1003,13 +1005,18 @@ class Trainer():
         self.rank = rank
         self.world_size = world_size
 
+        self.amp = amp
+        self.G_scaler = GradScaler(enabled = self.amp)
+        self.D_scaler = GradScaler(enabled = self.amp)
+
+
         h_params = {'image_size': self.image_size, 
                     'network_capacity': self.network_capacity,
                     "fmap_max":self.fmap_max,
                     "batch_size": self.batch_size,
                     "gradient_accumulate_every":self.gradient_accumulate_every,
                     "lr":self.lr,
-                    "fp16":self.fp16
+                    "amp":self.amp
                     }
 
         self.logger = wandb_logger if self.is_main else None
@@ -1032,7 +1039,7 @@ class Trainer():
     def init_GAN(self):
         args, kwargs = self.GAN_params
         self.GAN = StyleGAN2(lr=self.lr, lr_mlp=self.lr_mlp, ttur_mult=self.ttur_mult, image_size=self.image_size, network_capacity=self.network_capacity, fmap_max=self.fmap_max,
-                             transparent=self.transparent, fq_layers=self.fq_layers, fq_dict_size=self.fq_dict_size, attn_layers=self.attn_layers, fp16=self.fp16, cl_reg=self.cl_reg, rank=self.rank, *args, **kwargs)
+                             transparent=self.transparent, fq_layers=self.fq_layers, fq_dict_size=self.fq_dict_size, attn_layers=self.attn_layers, amp=self.amp, cl_reg=self.cl_reg, rank=self.rank, *args, **kwargs)
 
         if self.is_ddp:
             ddp_kwargs = {'device_ids': [self.rank], 'broadcast_buffers': False}
@@ -1130,8 +1137,7 @@ class Trainer():
         face_id_model = self.GAN.face_id if not self.is_ddp else self.face_id_ddp
         mtcnn_crop_size = self.GAN.mtcnn_crop_size
 
-        backwards = partial(loss_backwards, self.fp16)
-
+        amp_context = autocast if self.amp else null_context
         # setup losses
 
         if not self.dual_contrast_loss:
@@ -1160,82 +1166,131 @@ class Trainer():
             I_t = I_t.cuda(self.rank)
             T_pose_map = T_pose_map.cuda(self.rank)
 
-            # Get encodings
-            E_s = p_net(S_pose_map)
-            E_t = p_net(T_pose_map)
-            z_s = a_net(S_texture_map).expand(-1, num_layers, -1)
+            with amp_context():
+                # Get encodings
+                E_s = p_net(S_pose_map)
+                E_t = p_net(T_pose_map)
+                z_s = a_net(S_texture_map).expand(-1, num_layers, -1)
 
-            # Generate I_dash_s
-            I_dash_s = G(z_s, noise, E_s)  # I_dash_s
-            fake_output_1, fake_q_loss_1 = D_aug(
-                I_dash_s.clone().detach(), detach=True, **aug_kwargs)
+                # Generate I_dash_s
+                I_dash_s = G(z_s, noise, E_s)  # I_dash_s
+                fake_output_1, fake_q_loss_1 = D_aug(
+                    I_dash_s.clone().detach(), detach=True, **aug_kwargs)
 
-            I_s.requires_grad_()  # keep
-            real_output_1, real_q_loss_1 = D_aug(I_s, **aug_kwargs)
+                I_s.requires_grad_()  # keep
+                real_output_1, real_q_loss_1 = D_aug(I_s, **aug_kwargs)
 
-            real_output_loss_1 = real_output_1
-            fake_output_loss_1 = fake_output_1
+                real_output_loss_1 = real_output_1
+                fake_output_loss_1 = fake_output_1
 
-            # Generate I_dash_to_t
-            I_dash_s_to_t = G(z_s, noise, E_t)
-            fake_output_2, fake_q_loss_2 = D_aug(
-                I_dash_s_to_t.clone().detach(), detach=True, **aug_kwargs)
+                # Generate I_dash_to_t
+                I_dash_s_to_t = G(z_s, noise, E_t)
+                fake_output_2, fake_q_loss_2 = D_aug(
+                    I_dash_s_to_t.clone().detach(), detach=True, **aug_kwargs)
 
-            I_t.requires_grad_()
-            # opt params are for self.D instead os self.D_aug
-            real_output_2, real_q_loss_2 = D_aug(I_t, **aug_kwargs)
+                I_t.requires_grad_()
+                # opt params are for self.D instead os self.D_aug
+                real_output_2, real_q_loss_2 = D_aug(I_t, **aug_kwargs)
 
-            real_output_loss_2 = real_output_2
-            fake_output_loss_2 = fake_output_2
+                real_output_loss_2 = real_output_2
+                fake_output_loss_2 = fake_output_2
 
-            if self.rel_disc_loss:
-                real_output_loss_1 = real_output_loss_1 - \
-                    fake_output_1.mean()  # does this need brackets?
-                fake_output_loss_1 = fake_output_loss_1 - real_output_1.mean()
+                if self.rel_disc_loss:
+                    real_output_loss_1 = real_output_loss_1 - \
+                        fake_output_1.mean()  # does this need brackets?
+                    fake_output_loss_1 = fake_output_loss_1 - real_output_1.mean()
 
-                real_output_loss_2 = real_output_loss_2 - fake_output_2.mean()
-                fake_output_loss_2 = fake_output_loss_2 - real_output_2.mean()
+                    real_output_loss_2 = real_output_loss_2 - fake_output_2.mean()
+                    fake_output_loss_2 = fake_output_loss_2 - real_output_2.mean()
 
-            # divergence = D_loss_fn(real_output_loss, fake_output_loss)
-            divergence = get_d_total_loss(I_t, I_dash_s_to_t, real_output_loss_1,
-                                          fake_output_loss_1, real_output_loss_2, fake_output_loss_2, d_patch)
-            disc_loss = divergence
+                # divergence = D_loss_fn(real_output_loss, fake_output_loss)
+                divergence = get_d_total_loss(I_t, I_dash_s_to_t, real_output_loss_1,
+                                            fake_output_loss_1, real_output_loss_2, fake_output_loss_2, d_patch)
+                disc_loss = divergence
 
-            if self.has_fq:
-                quantize_loss = (fake_q_loss_1 + real_q_loss_1).mean()
-                self.q_loss = float(quantize_loss.detach().item())
+                if self.has_fq:
+                    quantize_loss = (fake_q_loss_1 + real_q_loss_1).mean()
+                    self.q_loss = float(quantize_loss.detach().item())
 
-                disc_loss = disc_loss + quantize_loss
+                    disc_loss = disc_loss + quantize_loss
+                
+                if self.has_fq:
+                    quantize_loss = (fake_q_loss_2 + real_q_loss_2).mean()
+                    self.q_loss = float(quantize_loss.detach().item())
 
+                    disc_loss = disc_loss + quantize_loss
+
+            #TODO: check if the adding to self.last_gp is correct
             if apply_gradient_penalty:
-                gp = gradient_penalty(I_s, real_output_1)
-                self.last_gp_loss = gp.clone().detach().item()  # remove item
-                self.track(self.last_gp_loss, 'GP')
-                disc_loss = disc_loss + gp
+                images = I_s
+                output = real_output_1
+                weight = 10
 
-            if self.has_fq:
-                quantize_loss = (fake_q_loss_2 + real_q_loss_2).mean()
-                self.q_loss = float(quantize_loss.detach().item())
+                output = self.D_scaler.scale(output) if self.amp else output
 
-                disc_loss = disc_loss + quantize_loss
+                batch_size = images.shape[0]
+                scaled_gradients = torch_grad(outputs=output, inputs=images,
+                                    grad_outputs=torch.ones(
+                                        output.size(), device=images.device),
+                                    create_graph=True, retain_graph=True, only_inputs=True)[0]
 
+                inv_scale = safe_div(1., self.D_scaler.get_scale()) if self.amp else 1.
+
+                if inv_scale != float('inf'):
+                    gradients = scaled_gradients * inv_scale
+
+                    with amp_context():
+                        gradients = gradients.reshape(batch_size, -1)
+                        gp =  weight * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+                        if not torch.isnan(gp):
+                            disc_loss = disc_loss + gp
+                            self.last_gp_loss = gp.clone().detach().item()
+                            self.track(self.last_gp_loss, 'GP')
+                
+             
             if apply_gradient_penalty:
-                gp = gradient_penalty(I_t, real_output_2)
-                self.last_gp_loss = gp.clone().detach().item()
-                self.track(self.last_gp_loss, 'GP')
-                disc_loss = disc_loss + gp
+                images = I_t
+                output = real_output_2
+                weight =10 
 
-            disc_loss = disc_loss / self.gradient_accumulate_every
+                output = self.D_scaler.scale(output) if self.amp else output
+
+                batch_size = images.shape[0]
+                scaled_gradients = torch_grad(outputs=output, inputs=images,
+                                    grad_outputs=torch.ones(
+                                        output.size(), device=images.device),
+                                    create_graph=True, retain_graph=True, only_inputs=True)[0]
+
+                inv_scale = safe_div(1., self.D_scaler.get_scale()) if self.amp else 1.
+
+                if inv_scale != float('inf'):
+                    gradients = scaled_gradients * inv_scale
+
+                    with amp_context():
+                        gradients = gradients.reshape(batch_size, -1)
+                        gp =  self.gp_weight * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+                        if not torch.isnan(gp):
+                            disc_loss = disc_loss + gp
+                            self.last_gp_loss = gp.clone().detach().item()
+                            self.track(self.last_gp_loss, 'GP')
+                
+
+
+            with amp_context():
+                disc_loss = disc_loss / self.gradient_accumulate_every
+                
             disc_loss.register_hook(raise_if_nan)
-            backwards(disc_loss, self.GAN.D_opt, loss_id=1)
-
+            self.D_scaler.scale(disc_loss).backward() 
+            
+            #TODO: check this with original Stylegan2 code: divide inside vs divide outlis
             total_disc_loss = total_disc_loss + torch.div(divergence.detach(), self.gradient_accumulate_every)
 
         self.d_loss = float(total_disc_loss.item())
         if (self.steps % 5 == 0):
             self.track(self.d_loss, 'D') 
 
-        self.GAN.D_opt.step()
+        self.D_scaler.step(self.GAN.D_opt)
+        self.D_scaler.update()
 
         # train generator
 
@@ -1602,7 +1657,7 @@ class Trainer():
             'version': __version__
         }
 
-        if self.GAN.fp16:
+        if self.GAN.amp:
             save_data['amp'] = amp.state_dict()
 
         torch.save(save_data, self.model_name(num))
@@ -1634,7 +1689,7 @@ class Trainer():
         except Exception as e:
             print('unable to load save model. please try downgrading the package to the version specified by the saved model')
             raise e
-        if self.GAN.fp16 and 'amp' in load_data:
+        if self.GAN.amp and 'amp' in load_data:
             amp.load_state_dict(load_data['amp'])
 
 
