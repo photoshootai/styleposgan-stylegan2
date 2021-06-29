@@ -792,11 +792,8 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
 
         print("StyleGAN2 initialized with args: ", {"image_size": image_size, "latent_dim" :latent_dim, "mtcnn_crop_size":mtcnn_crop_size, "fmap_max":fmap_max, "network_capacity":network_capacity, "attn_layers": attn_layers, "rank":rank})
 
-        # # startup apex mixed precision
-        # self.amp = amp
-        # if amp:
-        #     (self.G, self.D, self.GE, self.a_net, self.p_net, self.d_patch, self.vgg, self.face_id), (self.G_opt, self.D_opt) = amp.initialize(
-        #         [self.G, self.D, self.GE, self.a_net, self.p_net, self.d_patch, self.vgg, self.face_id], [self.G_opt, self.D_opt], opt_level='O1', num_losses=3)
+        self.amp = amp
+       
 
     def _init_weights(self):
         for m in self.modules():
@@ -1268,7 +1265,7 @@ class Trainer():
 
                     with amp_context():
                         gradients = gradients.reshape(batch_size, -1)
-                        gp =  self.gp_weight * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+                        gp =  weight * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
                         if not torch.isnan(gp):
                             disc_loss = disc_loss + gp
                             self.last_gp_loss = gp.clone().detach().item()
@@ -1307,79 +1304,109 @@ class Trainer():
 
             noise = image_noise(batch_size, image_size, device=self.rank)
 
-            # Get encodings
-            E_s = p_net(S_pose_map)
-            E_t = p_net(T_pose_map)
-            z_s = a_net(S_texture_map).expand(-1, num_layers, -1)
+            with amp_context():
+                # Get encodings
+                E_s = p_net(S_pose_map)
+                E_t = p_net(T_pose_map)
+                z_s = a_net(S_texture_map).expand(-1, num_layers, -1)
 
-            I_dash_s = G(z_s, noise, E_s)  # I_dash_s
-            fake_output_1, _ = D_aug(I_dash_s, **aug_kwargs)
-            fake_output_loss_1 = fake_output_1
+                I_dash_s = G(z_s, noise, E_s)  # I_dash_s
+                fake_output_1, _ = D_aug(I_dash_s, **aug_kwargs)
+                fake_output_loss_1 = fake_output_1
 
-            real_output_1 = None
+                real_output_1 = None
 
-            I_dash_s_to_t = G(z_s, noise, E_t)  # I_dash_s
-            fake_output_2, _ = D_aug(I_dash_s_to_t, **aug_kwargs)
-            fake_output_loss_2 = fake_output_2
+                I_dash_s_to_t = G(z_s, noise, E_t)  # I_dash_s
+                fake_output_2, _ = D_aug(I_dash_s_to_t, **aug_kwargs)
+                fake_output_loss_2 = fake_output_2
 
-            real_output_2 = None
+                real_output_2 = None
 
-            if G_requires_reals:
-                image_batch_I_s = I_s
-                real_output_1, _ = D_aug(
-                    image_batch_I_s, detach=True, **aug_kwargs)
-                real_output_1 = real_output_1.detach()
+                if G_requires_reals:
+                    image_batch_I_s = I_s
+                    real_output_1, _ = D_aug(
+                        image_batch_I_s, detach=True, **aug_kwargs)
+                    real_output_1 = real_output_1.detach()
 
-                image_batch_I_t = I_t
-                real_output_2, _ = D_aug(
-                    image_batch_I_t, detach=True, **aug_kwargs)
-                real_output_2 = real_output_2.detach()
+                    image_batch_I_t = I_t
+                    real_output_2, _ = D_aug(
+                        image_batch_I_t, detach=True, **aug_kwargs)
+                    real_output_2 = real_output_2.detach()
 
-            if self.top_k_training:
-                epochs = (self.steps * batch_size *
-                          self.gradient_accumulate_every) / len(self.dataset)
-                k_frac = max(self.generator_top_k_gamma **
-                             epochs, self.generator_top_k_frac)
-                k = math.ceil(batch_size * k_frac)
+                if self.top_k_training:
+                    epochs = (self.steps * batch_size *
+                            self.gradient_accumulate_every) / len(self.dataset)
+                    k_frac = max(self.generator_top_k_gamma **
+                                epochs, self.generator_top_k_frac)
+                    k = math.ceil(batch_size * k_frac)
 
-                if k != batch_size:
-                    fake_output_loss_1, _ = fake_output_loss_1.topk(
-                        k=k, largest=False)
-                    fake_output_loss_2, _ = fake_output_loss_2.topk(
-                        k=k, largest=False)
+                    if k != batch_size:
+                        fake_output_loss_1, _ = fake_output_loss_1.topk(
+                            k=k, largest=False)
+                        fake_output_loss_2, _ = fake_output_loss_2.topk(
+                            k=k, largest=False)
 
-            # loss = G_loss_fn(fake_output_loss, real_output)
-            loss = get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1,
-                                    fake_output_2, real_output_2, vgg_model, face_id_model, d_patch, mtcnn_crop_size)
-            gen_loss = loss
+                # loss = G_loss_fn(fake_output_loss, real_output)
+                loss = get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1,
+                                        fake_output_2, real_output_2, vgg_model, face_id_model, d_patch, mtcnn_crop_size)
+                gen_loss = loss
 
             if apply_path_penalty:
-                pl_lengths = calc_pl_lengths(z_s, I_dash_s)
-                avg_pl_length = torch.mean(pl_lengths.detach())
+                styles = z_s
+                images = I_dash_s
 
-                if not is_empty(self.pl_mean):
-                    pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
-                    if not torch.isnan(pl_loss):
-                        gen_loss = gen_loss + pl_loss
+                device = images.device
+                num_pixels = images.shape[2] * images.shape[3]
+                pl_noise = torch.randn(images.shape, device=device) / math.sqrt(num_pixels)
+                outputs = (images * pl_noise).sum()
 
-            gen_loss = gen_loss / self.gradient_accumulate_every
+                outputs = self.G_scaler.scale(output) if self.amp else outputs
+
+                scaled_pl_grads = torch_grad(outputs=outputs, inputs=styles,
+                                    grad_outputs=torch.ones(
+                                        outputs.shape, device=device),
+                                    create_graph=True, retain_graph=True, only_inputs=True)[0]
+
+                inv_scale = safe_div(1., self.G_scaler.get_scale()) if self.amp else 1.
+
+                if inv_scale != float('inf'):    
+                    pl_lengths =  (scaled_pl_grads ** 2).sum(dim=2).mean(dim=1).sqrt()
+                    avg_pl_length = torch.mean(pl_lengths.detach())
+                    with amp_context():
+                        if not is_empty(self.pl_mean):
+                            pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
+                            if not torch.isnan(pl_loss):
+                                gen_loss = gen_loss + pl_loss
+                            
+                        if not torch.isnan(avg_pl_length):
+                            self.pl_mean = self.pl_length_ma.update_average(self.pl_mean, avg_pl_length)
+                            self.track(self.pl_mean, 'PL')                                
+
+            with amp_context(): 
+                gen_loss = gen_loss / self.gradient_accumulate_every
+
+
             gen_loss.register_hook(raise_if_nan)
-            backwards(gen_loss, self.GAN.G_opt, loss_id=2)
+            self.G_scaler.scale(gen_loss).backward()
 
+            #TODO: check this with original Stylegan2 code: divide inside vs divide outlis
             total_gen_loss = total_gen_loss + torch.div(loss.detach(), self.gradient_accumulate_every)
 
         self.g_loss = float(total_gen_loss.item())
         if (self.steps % 5 == 0):
             self.track(self.g_loss, 'G')
 
-        self.GAN.G_opt.step()
+        self.G_scaler.step(self.GAN.G_opt)
+        self.G_scaler.update()
 
-        # calculate moving averages
 
-        if apply_path_penalty and not torch.isnan(avg_pl_length):
-            self.pl_mean = self.pl_length_ma.update_average(
-                self.pl_mean, avg_pl_length)
-            self.track(self.pl_mean, 'PL')
+        #Moved to inside if block as for gradient_penalty
+        # # calculate moving averages
+
+        # if apply_path_penalty and not torch.isnan(avg_pl_length):
+        #     self.pl_mean = self.pl_length_ma.update_average(
+        #         self.pl_mean, avg_pl_length)
+        #     self.track(self.pl_mean, 'PL')
 
         if self.is_main and self.steps % 10 == 0 and self.steps > 20000:
             self.GAN.EMA()
