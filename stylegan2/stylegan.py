@@ -742,6 +742,7 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
         self.lr = lr
         self.steps = steps
         self.ema_updater = EMA(0.995)
+
         self.mtcnn_crop_size = 160
 
         self.G = Generator(image_size, latent_dim, network_capacity,
@@ -790,10 +791,10 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
 
         self.cuda(rank)
 
-        print("StyleGAN2 initialized with args: ", {"image_size": image_size, "latent_dim" :latent_dim, "mtcnn_crop_size":mtcnn_crop_size, "fmap_max":fmap_max, "network_capacity":network_capacity, "attn_layers": attn_layers, "rank":rank})
 
         self.amp = amp
-       
+    
+        print("StyleGAN2 initialized with args: ", {"image_size": image_size, "latent_dim" : latent_dim, "mtcnn_crop_size": mtcnn_crop_size, "fmap_max": fmap_max, "network_capacity": network_capacity, "attn_layers": attn_layers, "rank": rank})
 
     def _init_weights(self):
         for m in self.modules():
@@ -1103,6 +1104,7 @@ class Trainer():
 
         if not exists(self.GAN):  # PNet ANet initializations coupled with self.GAN
             self.init_GAN()
+     
 
         self.GAN.train()
         total_disc_loss = torch.tensor(0.).cuda(self.rank)
@@ -1681,16 +1683,21 @@ class Trainer():
     def save(self, num):
         save_data = {
             'GAN': self.GAN.state_dict(),
+            'G_opt': self.GAN.G_opt.state_dict(),
+            'D_opt': self.GAN.D_opt.state_dict(), 
             'version': __version__
         }
 
         if self.GAN.amp:
-            save_data['amp'] = amp.state_dict()
+            save_data['G_scaler'] = self.G_scaler.state_dict() 
+            save_data['D_scaler'] = self.D_scaler.state_dict()
 
         torch.save(save_data, self.model_name(num))
         self.write_config()
 
     def load(self, num=-1):
+        print("")
+        print("-----Starting loading from checkoint-----")
         self.load_config()
 
         name = num
@@ -1702,22 +1709,43 @@ class Trainer():
             if len(saved_nums) == 0:
                 return
             name = saved_nums[-1]
-            print(f'continuing from previous epoch - {name}')
+            print(f'Continuing from previous epoch - {name}')
 
         self.steps = name * self.save_every
 
         load_data = torch.load(self.model_name(name))
 
         if 'version' in load_data:
-            print(f"loading from version {load_data['version']}")
+            print(f"Loading from version {load_data['version']}")
 
         try:
             self.GAN.load_state_dict(load_data['GAN'])
+            print("Loaded GAN")
+
+            if 'G_opt' in load_data:
+                self.GAN.G_opt.load_state_dict(load_data['G_opt'])
+                print("Loaded G_opt")
+
+            if 'D_opt' in load_data:
+                self.GAN.D_opt.load_state_dict(load_data['D_opt'])
+                print("Loaded D_opt")
+
+            if self.amp: 
+                if 'G_scaler' in load_data: 
+                    self.G_scaler.load_state_dict(load_data['G_scaler'])
+                    print("Loaded G_scaler")
+                
+                if 'D_scaler' in load_data:
+                    self.D_scaler.load_state_dict(load_data['D_scaler'])
+                    print("Loaded D_scaler")
+            
+            print(f"Loaded the above from checkpoint file: model_{name}.pt")
+            print("---- Finished loading from checkpoint -----")
+
         except Exception as e:
-            print('unable to load save model. please try downgrading the package to the version specified by the saved model')
+            print('Unable to load save model. please try downgrading the package to the version specified by the saved model')
             raise e
-        if self.GAN.amp and 'amp' in load_data:
-            amp.load_state_dict(load_data['amp'])
+
 
 
 class ModelLoader:
