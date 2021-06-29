@@ -794,7 +794,7 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
 
         self.amp = amp
     
-        print("StyleGAN2 initialized with args: ", {"image_size": image_size, "latent_dim" : latent_dim, "mtcnn_crop_size": mtcnn_crop_size, "fmap_max": fmap_max, "network_capacity": network_capacity, "attn_layers": attn_layers, "rank": rank})
+        print("StyleGAN2 initialized with args: ", {"image_size": image_size, "latent_dim" : latent_dim, "mtcnn_crop_size": mtcnn_crop_size, "fmap_max": fmap_max, "network_capacity": network_capacity, "attn_layers": attn_layers, "amp": amp,"rank": rank})
 
     def _init_weights(self):
         for m in self.modules():
