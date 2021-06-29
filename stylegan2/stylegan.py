@@ -1278,7 +1278,6 @@ class Trainer():
             with amp_context():
                 disc_loss = disc_loss / self.gradient_accumulate_every
                 
-            disc_loss.register_hook(raise_if_nan)
             self.D_scaler.scale(disc_loss).backward() 
             
             #TODO: check this with original Stylegan2 code: divide inside vs divide outlis
@@ -1388,7 +1387,6 @@ class Trainer():
                 gen_loss = gen_loss / self.gradient_accumulate_every
 
 
-            gen_loss.register_hook(raise_if_nan)
             self.G_scaler.scale(gen_loss).backward()
 
             #TODO: check this with original Stylegan2 code: divide inside vs divide outlis
