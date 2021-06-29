@@ -1416,11 +1416,11 @@ class Trainer():
 
         # save from NaN errors
 
-        if any(torch.isnan(l) for l in (total_gen_loss, total_disc_loss)):
-            print(
-                f'NaN detected for generator or discriminator. Loading from checkpoint #{self.checkpoint_num}')
-            self.load(self.checkpoint_num)
-            raise NanException
+        # if any(torch.isnan(l) for l in (total_gen_loss, total_disc_loss)):
+        #     print(
+        #         f'NaN detected for generator or discriminator. Loading from checkpoint #{self.checkpoint_num}')
+        #     self.load(self.checkpoint_num)
+        #     raise NanException
 
         # periodically save results
 
