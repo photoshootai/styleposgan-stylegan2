@@ -42,7 +42,7 @@ from models import ANet, PNet
 
 from losses import VGG16Perceptual, FaceIDLoss
 
-#torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
 import wandb
 try:
     from apex import amp
@@ -787,7 +787,8 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
 
         self.cuda(rank)
 
-        print("StyleGAN2 initialized with args: ", {"image_size": image_size, "latent_dim" :latent_dim, "mtcnn_crop_size":mtcnn_crop_size, "fmap_max":fmap_max, "network_capacity":network_capacity, "attn_layers": attn_layers, "rank":rank})
+        print("StyleGAN2 initialized with args: ", {"image_size": image_size, "latent_dim": latent_dim, "mtcnn_crop_size": mtcnn_crop_size,
+                                                    "fmap_max": fmap_max, "network_capacity": network_capacity, "attn_layers": attn_layers, "rank": rank})
 
         # startup apex mixed precision
         self.fp16 = fp16
@@ -836,7 +837,7 @@ def get_d_total_loss(I_t, I_dash_s_to_t, pred_real_1, pred_fake_1, pred_real_2, 
 
     d_total_loss = gan_d_loss_1 + gan_d_loss_2 + \
         torch.mul(patch_loss, -1)  # DPatch will maximize patch_loss
-    return d_total_loss
+    return d_total_loss, patch_loss  # Patch Loss needs to go up
 
 
 def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1, fake_output_2, real_output_2, vgg_model, face_id_model, d_patch_model, mtcnn_crop_size):
@@ -858,16 +859,11 @@ def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_outp
         weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s, I_s)  # + \
     #weight_face * get_face_id_loss(I_dash_s, I_s, face_id_model, crop_size=mtcnn_crop_size)
 
-    rec_loss_2 = weight_l1 * get_l1_loss(I_dash_s_to_t, I_t) + \
-        weight_vgg * \
-        get_perceptual_vgg_loss(vgg_model, I_dash_s_to_t, I_t)  # + \
-    # weight_face * get_face_id_loss(I_dash_s_to_t, I_t, face_id_model, crop_size=mtcnn_crop_size)
-
-
+    rec_loss_2 = 0 # weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s_to_t, I_t) #+ weight_l1 * get_l1_loss(I_dash_s_to_t, I_t)   #+ weight_face * get_face_id_loss(I_dash_s_to_t, I_t, face_id_model, crop_size=mtcnn_crop_size)
 
     g_loss_total = rec_loss_1 + rec_loss_2 + \
         gan_g_loss_1 + gan_g_loss_2 + patch_loss
-    return g_loss_total
+    return g_loss_total, rec_loss_1, rec_loss_2, patch_loss
 
 
 class Trainer():
@@ -1003,13 +999,13 @@ class Trainer():
         self.rank = rank
         self.world_size = world_size
 
-        h_params = {'image_size': self.image_size, 
+        h_params = {'image_size': self.image_size,
                     'network_capacity': self.network_capacity,
-                    "fmap_max":self.fmap_max,
+                    "fmap_max": self.fmap_max,
                     "batch_size": self.batch_size,
-                    "gradient_accumulate_every":self.gradient_accumulate_every,
-                    "lr":self.lr,
-                    "fp16":self.fp16
+                    "gradient_accumulate_every": self.gradient_accumulate_every,
+                    "lr": self.lr,
+                    "fp16": self.fp16
                     }
 
         self.logger = wandb_logger if self.is_main else None
@@ -1035,7 +1031,8 @@ class Trainer():
                              transparent=self.transparent, fq_layers=self.fq_layers, fq_dict_size=self.fq_dict_size, attn_layers=self.attn_layers, fp16=self.fp16, cl_reg=self.cl_reg, rank=self.rank, *args, **kwargs)
 
         if self.is_ddp:
-            ddp_kwargs = {'device_ids': [self.rank], 'broadcast_buffers': False}
+            ddp_kwargs = {'device_ids': [
+                self.rank], 'broadcast_buffers': False}
 
             self.G_ddp = DDP(self.GAN.G, **ddp_kwargs)
             self.D_ddp = DDP(self.GAN.D, **ddp_kwargs)
@@ -1046,13 +1043,12 @@ class Trainer():
             self.p_net_ddp = DDP(self.GAN.p_net, **ddp_kwargs)
             self.d_patch_ddp = DDP(self.GAN.d_patch, **ddp_kwargs)
 
-            self.vgg_ddp = self.GAN.vgg #DDP(self.GAN.vgg, **ddp_kwargs)
-            self.face_id_ddp = self.GAN.face_id # DDP(self.GAN.face_id, **ddp_kwargs)
+            self.vgg_ddp = self.GAN.vgg  # DDP(self.GAN.vgg, **ddp_kwargs)
+            # DDP(self.GAN.face_id, **ddp_kwargs)
+            self.face_id_ddp = self.GAN.face_id
 
         if exists(self.logger):
             self.logger.watch(self.GAN)
- 
-
 
     def write_config(self):
         self.config_path.write_text(json.dumps(self.config()))
@@ -1197,8 +1193,8 @@ class Trainer():
                 fake_output_loss_2 = fake_output_loss_2 - real_output_2.mean()
 
             # divergence = D_loss_fn(real_output_loss, fake_output_loss)
-            divergence = get_d_total_loss(I_t, I_dash_s_to_t, real_output_loss_1,
-                                          fake_output_loss_1, real_output_loss_2, fake_output_loss_2, d_patch)
+            divergence, patch_loss_to_track = get_d_total_loss(I_t, I_dash_s_to_t, real_output_loss_1,
+                                                               fake_output_loss_1, real_output_loss_2, fake_output_loss_2, d_patch)
             disc_loss = divergence
 
             if self.has_fq:
@@ -1229,11 +1225,16 @@ class Trainer():
             disc_loss.register_hook(raise_if_nan)
             backwards(disc_loss, self.GAN.D_opt, loss_id=1)
 
-            total_disc_loss = total_disc_loss + torch.div(divergence.detach(), self.gradient_accumulate_every)
+            total_disc_loss = total_disc_loss + \
+                torch.div(divergence.detach(), self.gradient_accumulate_every)
+            patch_loss_to_track = patch_loss_to_track + \
+                torch.div(patch_loss_to_track.detach(),
+                          self.gradient_accumulate_every)
 
         self.d_loss = float(total_disc_loss.item())
         if (self.steps % 5 == 0):
-            self.track(self.d_loss, 'D') 
+            self.track(self.d_loss, 'D')
+            self.track(patch_loss_to_track, 'DPatch')
 
         self.GAN.D_opt.step()
 
@@ -1294,8 +1295,8 @@ class Trainer():
                         k=k, largest=False)
 
             # loss = G_loss_fn(fake_output_loss, real_output)
-            loss = get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1,
-                                    fake_output_2, real_output_2, vgg_model, face_id_model, d_patch, mtcnn_crop_size)
+            loss, rec_loss_1, rec_loss_2, patch_loss = get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1,
+                                                                        fake_output_2, real_output_2, vgg_model, face_id_model, d_patch, mtcnn_crop_size)
             gen_loss = loss
 
             if apply_path_penalty:
@@ -1311,11 +1312,24 @@ class Trainer():
             gen_loss.register_hook(raise_if_nan)
             backwards(gen_loss, self.GAN.G_opt, loss_id=2)
 
-            total_gen_loss = total_gen_loss + torch.div(loss.detach(), self.gradient_accumulate_every)
+            total_gen_loss = total_gen_loss + \
+                torch.div(loss.detach(), self.gradient_accumulate_every)
+            rec_loss_1 = rec_loss_1 + \
+                torch.div(rec_loss_1.detach(),
+                          self.gradient_accumulate_every)
+            rec_loss_2 = rec_loss_2 + \
+                torch.div(rec_loss_2.detach(),
+                          self.gradient_accumulate_every)
+            patch_loss = patch_loss + \
+                torch.div(patch_loss.detach(),
+                          self.gradient_accumulate_every)
 
         self.g_loss = float(total_gen_loss.item())
         if (self.steps % 5 == 0):
             self.track(self.g_loss, 'G')
+            self.track(rec_loss_1, 'RecLoss1')
+            self.track(rec_loss_2, 'RecLoss2')
+            self.track(patch_loss, 'GPatch')
 
         self.GAN.G_opt.step()
 
@@ -1374,9 +1388,11 @@ class Trainer():
         image_size = self.GAN.G.image_size
         num_layers = self.GAN.G.num_layers
 
-
         # Get batch inputs
-        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
+        batch = next(self.loader)
+        # show_batch(batch)
+
+        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = batch
         I_s = I_s.cuda(self.rank)
         S_pose_map = S_pose_map.cuda(self.rank)
         S_texture_map = S_texture_map.cuda(self.rank)
@@ -1386,27 +1402,33 @@ class Trainer():
         batch_size = I_t.shape[0]
 
         # Get encodings
+        # E_s = self.GAN.p_net(S_pose_map)
         E_t = self.GAN.p_net(T_pose_map)
         z_s = self.GAN.a_net(S_texture_map).expand(-1, num_layers, -1)
 
         noise = image_noise(batch_size, image_size, device=self.rank)
 
         # regular
-
+        size = min(8, batch_size)
         generated_images = self.generate_truncated(self.GAN.G, z_s, noise, E_t)
-        torchvision.utils.save_image(generated_images, str(
-            self.results_dir / self.name / f'{str(num)}.{ext}'), nrow=batch_size)
+        generated_stack = torch.cat(
+            (I_s[:size], I_t[:size], generated_images[:size]), dim=0)
+        save_path = str(self.results_dir / self.name / f'{str(num)}.{ext}')
+        torchvision.utils.save_image(generated_stack, save_path, nrow=size)
 
-        images = wandb.Image(generated_images, caption="Generations Regular")
+        images = wandb.Image(save_path, caption="Generations Regular")
         self.track(images, "generations_regular")
 
         # moving averages
 
-        generated_images = self.generate_truncated(self.GAN.GE, z_s, noise, E_t)
-        torchvision.utils.save_image(generated_images, str(
-            self.results_dir / self.name / f'{str(num)}-ema.{ext}'), nrow=batch_size)
+        generated_images = self.generate_truncated(
+            self.GAN.GE, z_s, noise, E_t)
+        generated_stack = torch.cat(
+            (I_s[:size], I_t[:size], generated_images[:size]), dim=0)
+        save_path = str(self.results_dir / self.name / f'{str(num)}-ema.{ext}')
+        torchvision.utils.save_image(generated_stack, save_path, nrow=size)
 
-        images = wandb.Image(generated_images, caption="Generations EMA")
+        images = wandb.Image(save_path, caption="Generations EMA")
         self.track(images, "generations_ema")
 
         """

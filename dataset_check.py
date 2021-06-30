@@ -14,11 +14,11 @@ def show_batch(batch):
 
         print(P_s[i].size())
         im = transforms.ToPILImage()(P_s[i]).convert("RGB")
-        im.show("Source Pose Map")
+        # im.show("Source Pose Map")
 
         print(A_s[i].size())
         im = transforms.ToPILImage()(A_s[i]).convert("RGB")
-        im.show("Source Texture Map")
+        # im.show("Source Texture Map")
 
         print(I_t[i].size())
         im = transforms.ToPILImage()(I_t[i]).convert("RGB")
@@ -26,7 +26,7 @@ def show_batch(batch):
 
         print(P_t[i].size())
         im = transforms.ToPILImage()(P_t[i]).convert("RGB")
-        im.show("Target Pose Map")
+        # im.show("Target Pose Map")
 
         input("Press Enter to continue...")
 
