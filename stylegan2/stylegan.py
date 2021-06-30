@@ -1316,9 +1316,9 @@ class Trainer():
             rec_loss_1 = rec_loss_1 + \
                 torch.div(rec_loss_1.detach(),
                           self.gradient_accumulate_every)
-            rec_loss_2 = rec_loss_2 + \
-                torch.div(rec_loss_2.detach(),
-                          self.gradient_accumulate_every)
+
+            # rec_loss_2 = rec_loss_2 + torch.div(rec_loss_2.detach(), self.gradient_accumulate_every)
+
             patch_loss = patch_loss + \
                 torch.div(patch_loss.detach(),
                           self.gradient_accumulate_every)
@@ -1327,7 +1327,7 @@ class Trainer():
         if (self.steps % 5 == 0):
             self.track(self.g_loss, 'G')
             self.track(rec_loss_1, 'RecLoss1')
-            self.track(rec_loss_2, 'RecLoss2')
+            # self.track(rec_loss_2, 'RecLoss2')
             self.track(patch_loss, 'GPatch')
 
         self.GAN.G_opt.step()
