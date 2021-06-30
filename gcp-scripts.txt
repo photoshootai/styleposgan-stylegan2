@@ -1,4 +1,3 @@
-
 # Clone 
 !git clone https://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@github.com/photoshootai/styleposgan-stylegan2.git
 !git checkout ddp-fixes
@@ -16,6 +15,7 @@ gdown https://drive.google.com/uc?id=10zyjNV11e4X4qDMztws9wtNivaxv4qof
 !mkdir './styleposgan-stylegan2/data'
 unzip -q 'DeepFashionWithFace.zip' -d './styleposgan-stylegan2/data'
 
-
 #Run Training
-!python train.py --data ./data/DeepFashionWithFace --multi-gpus --image-size 256 --batch-size 16 --gradient-accumulate-every 2 --log
+python train.py --name spgan-28-june --data ./data/DeepFashionWithFace --models_dir ./checkpoints/ --results_dir ./results/ --multi-gpus --image-size 256 --batch-size 24 --gradient-accumulate-every 2 --log
+
+

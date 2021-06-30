@@ -37,7 +37,7 @@ def main():
     num_workers = 1
     image_size = (512, 512)
 
-    dataset = DeepFashionDataset(data_path, image_size=image_size, seed=24) #Change seed to get different images
+    dataset = DeepFashionDataset(data_path, image_size=image_size, seed=80) #Change seed to get different images
     dataloader = DataLoader(
         dataset, batch_size=batch_size, num_workers=num_workers)
 

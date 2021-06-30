@@ -47,3 +47,4 @@ tb_logs/
 /results
 /fid
 /models/*/
+.ipynb_checkpoints/
