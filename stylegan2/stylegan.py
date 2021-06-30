@@ -859,7 +859,7 @@ def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_outp
         weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s, I_s)  # + \
     #weight_face * get_face_id_loss(I_dash_s, I_s, face_id_model, crop_size=mtcnn_crop_size)
 
-    rec_loss_2 =  weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s_to_t, I_t) #+ weight_l1 * get_l1_loss(I_dash_s_to_t, I_t)   #+ weight_face * get_face_id_loss(I_dash_s_to_t, I_t, face_id_model, crop_size=mtcnn_crop_size)
+    rec_loss_2 = 0 # weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s_to_t, I_t) #+ weight_l1 * get_l1_loss(I_dash_s_to_t, I_t)   #+ weight_face * get_face_id_loss(I_dash_s_to_t, I_t, face_id_model, crop_size=mtcnn_crop_size)
 
     g_loss_total = rec_loss_1 + rec_loss_2 + \
         gan_g_loss_1 + gan_g_loss_2 + patch_loss
