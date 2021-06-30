@@ -19,3 +19,4 @@ unzip -q 'DeepFashionWithFace.zip' -d './styleposgan-stylegan2/data'
 python train.py --name spgan-28-june --data ./data/DeepFashionWithFace --models_dir ./checkpoints/ --results_dir ./results/ --multi-gpus --image-size 256 --batch-size 24 --gradient-accumulate-every 2 --log
 
 
+python3.8 train.py --name a-100-test --data ./data/DeepFashionWithFace --models_dir ./checkpoints/ --results_dir ./results/ --image-size 256 --batch-size 4 --log

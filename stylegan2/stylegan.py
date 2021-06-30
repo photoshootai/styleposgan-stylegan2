@@ -1376,7 +1376,11 @@ class Trainer():
 
 
         # Get batch inputs
-        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
+        batch = next(self.loader)
+        # show_batch(batch)
+
+        
+        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = batch
         I_s = I_s.cuda(self.rank)
         S_pose_map = S_pose_map.cuda(self.rank)
         S_texture_map = S_texture_map.cuda(self.rank)
@@ -1386,25 +1390,28 @@ class Trainer():
         batch_size = I_t.shape[0]
 
         # Get encodings
+        E_s =self.GAN.p_net(S_pose_map)
         E_t = self.GAN.p_net(T_pose_map)
         z_s = self.GAN.a_net(S_texture_map).expand(-1, num_layers, -1)
 
         noise = image_noise(batch_size, image_size, device=self.rank)
 
         # regular
-
-        generated_images = self.generate_truncated(self.GAN.G, z_s, noise, E_t)
-        torchvision.utils.save_image(generated_images, str(
-            self.results_dir / self.name / f'{str(num)}.{ext}'), nrow=batch_size)
+        size = min(8, batch_size)
+        generated_images = self.generate_truncated(self.GAN.G, z_s, noise, E_s)
+        generated_stack = torch.cat((I_s[:size], I_t[:size], generated_images[:size]), dim=0)
+        torchvision.utils.save_image(generated_stack, str(
+            self.results_dir / self.name / f'{str(num)}.{ext}'), nrow=size)
 
         images = wandb.Image(generated_images, caption="Generations Regular")
         self.track(images, "generations_regular")
 
         # moving averages
 
-        generated_images = self.generate_truncated(self.GAN.GE, z_s, noise, E_t)
-        torchvision.utils.save_image(generated_images, str(
-            self.results_dir / self.name / f'{str(num)}-ema.{ext}'), nrow=batch_size)
+        generated_images = self.generate_truncated(self.GAN.GE, z_s, noise, E_s)
+        generated_stack = torch.cat((I_s[:size], I_t[:size], generated_images[:size]), dim=0)
+        torchvision.utils.save_image(generated_stack, str(
+            self.results_dir / self.name / f'{str(num)}-ema.{ext}'), nrow=size)
 
         images = wandb.Image(generated_images, caption="Generations EMA")
         self.track(images, "generations_ema")
