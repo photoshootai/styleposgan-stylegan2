@@ -1419,7 +1419,7 @@ class Trainer():
         torchvision.utils.save_image(generated_stack, str(
             self.results_dir / self.name / f'{str(num)}.{ext}'), nrow=size)
 
-        images = wandb.Image(generated_images, caption="Generations Regular")
+        images = wandb.Image(generated_stack, caption="Generations Regular")
         self.track(images, "generations_regular")
 
         # moving averages
@@ -1431,7 +1431,7 @@ class Trainer():
         torchvision.utils.save_image(generated_stack, str(
             self.results_dir / self.name / f'{str(num)}-ema.{ext}'), nrow=size)
 
-        images = wandb.Image(generated_images, caption="Generations EMA")
+        images = wandb.Image(generated_stack, caption="Generations EMA")
         self.track(images, "generations_ema")
 
         """
