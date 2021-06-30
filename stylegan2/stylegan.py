@@ -835,34 +835,31 @@ def get_d_total_loss(I_t, I_dash_s_to_t, pred_real_1, pred_fake_1, pred_real_2, 
     # patch loss
     patch_loss = get_patch_loss(I_dash_s_to_t, I_t, d_patch)
 
-    d_total_loss = gan_d_loss_1 + gan_d_loss_2 + \
-        torch.mul(patch_loss, -1)  # DPatch will maximize patch_loss
+    d_total_loss = gan_d_loss_1 + gan_d_loss_2 + torch.mul(patch_loss, -1)  # DPatch will maximize patch_loss
     return d_total_loss, patch_loss  # Patch Loss needs to go up
 
 
 def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1, fake_output_2, real_output_2, vgg_model, face_id_model, d_patch_model, mtcnn_crop_size):
 
-    weight_l1 = 1
-    weight_vgg = 1
-    weight_face = 1
-    weight_gan = 1
-    weight_patch = 1
+    weight_l1 = 1.
+    weight_vgg = 1.
+    weight_face = 1.
+    weight_gan = 1.
+    weight_patch = 1.
 
     # GAN_d_loss1
-    gan_g_loss_1 = gen_hinge_loss(fake_output_1, real_output_1)
+    gan_g_loss_1 = weight_gan * gen_hinge_loss(fake_output_1, real_output_1)
     # GAN_d_loss2
-    gan_g_loss_2 = gen_hinge_loss(fake_output_2, real_output_2)
+    gan_g_loss_2 = weight_gan * gen_hinge_loss(fake_output_2, real_output_2)
 
-    patch_loss = get_patch_loss(I_dash_s_to_t, I_t, d_patch_model)
+    patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, d_patch_model)
 
-    rec_loss_1 = weight_l1 * get_l1_loss(I_dash_s, I_s) + \
-        weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s, I_s)  # + \
-    #weight_face * get_face_id_loss(I_dash_s, I_s, face_id_model, crop_size=mtcnn_crop_size)
+    rec_loss_1 = weight_l1 * get_l1_loss(I_dash_s, I_s) + weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s, I_s) #+ weight_face * get_face_id_loss(I_dash_s, I_s, face_id_model, crop_size=mtcnn_crop_size)
 
-    rec_loss_2 = 0 # weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s_to_t, I_t) #+ weight_l1 * get_l1_loss(I_dash_s_to_t, I_t)   #+ weight_face * get_face_id_loss(I_dash_s_to_t, I_t, face_id_model, crop_size=mtcnn_crop_size)
+    rec_loss_2 = weight_l1 * get_l1_loss(I_dash_s_to_t, I_t) + weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s_to_t, I_t) #+ weight_face * get_face_id_loss(I_dash_s_to_t, I_t, face_id_model, crop_size=mtcnn_crop_size)
 
-    g_loss_total = rec_loss_1 + rec_loss_2 + \
-        gan_g_loss_1 + gan_g_loss_2 + patch_loss
+    g_loss_total = rec_loss_1 + rec_loss_2 + gan_g_loss_1 + gan_g_loss_2 + patch_loss
+    
     return g_loss_total, rec_loss_1, rec_loss_2, patch_loss
 
 
