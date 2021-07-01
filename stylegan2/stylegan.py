@@ -835,34 +835,32 @@ def get_d_total_loss(I_t, I_dash_s_to_t, pred_real_1, pred_fake_1, pred_real_2, 
     # patch loss
     patch_loss = get_patch_loss(I_dash_s_to_t, I_t, d_patch)
 
-    d_total_loss = gan_d_loss_1 + gan_d_loss_2 + \
-        torch.mul(patch_loss, -1)  # DPatch will maximize patch_loss
+    d_total_loss = gan_d_loss_1 + gan_d_loss_2 + torch.mul(patch_loss, -1)  # DPatch will maximize patch_loss
     return d_total_loss, patch_loss  # Patch Loss needs to go up
 
 
 def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1, fake_output_2, real_output_2, vgg_model, face_id_model, d_patch_model, mtcnn_crop_size):
 
-    weight_l1 = 1
-    weight_vgg = 1
-    weight_face = 1
-    weight_gan = 1
-    weight_patch = 1
+    weight_l1 = 1.
+    weight_vgg = 1.
+    weight_face = 1.
+    weight_gan = 1.
+    weight_patch = 1.
 
     # GAN_d_loss1
-    gan_g_loss_1 = gen_hinge_loss(fake_output_1, real_output_1)
+    gan_g_loss_1 = weight_gan * gen_hinge_loss(fake_output_1, real_output_1)
     # GAN_d_loss2
-    gan_g_loss_2 = gen_hinge_loss(fake_output_2, real_output_2)
+    gan_g_loss_2 = weight_gan * gen_hinge_loss(fake_output_2, real_output_2)
 
-    patch_loss = get_patch_loss(I_dash_s_to_t, I_t, d_patch_model)
+    patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, d_patch_model)
 
-    rec_loss_1 = weight_l1 * get_l1_loss(I_dash_s, I_s) + \
-        weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s, I_s)  # + \
-    #weight_face * get_face_id_loss(I_dash_s, I_s, face_id_model, crop_size=mtcnn_crop_size)
+    rec_loss_1 = weight_l1 * get_l1_loss(I_dash_s, I_s) + weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s, I_s) #+ weight_face * get_face_id_loss(I_dash_s, I_s, face_id_model, crop_size=mtcnn_crop_size)
 
-    # rec_loss_2 = torch.zeros(1).to() # weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s_to_t, I_t) #+ weight_l1 * get_l1_loss(I_dash_s_to_t, I_t)   #+ weight_face * get_face_id_loss(I_dash_s_to_t, I_t, face_id_model, crop_size=mtcnn_crop_size)
+    rec_loss_2 = weight_l1 * get_l1_loss(I_dash_s_to_t, I_t) + weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s_to_t, I_t) #+ weight_face * get_face_id_loss(I_dash_s_to_t, I_t, face_id_model, crop_size=mtcnn_crop_size)
 
-    g_loss_total = rec_loss_1 + gan_g_loss_1 + gan_g_loss_2 + patch_loss
-    return g_loss_total, rec_loss_1, 0, patch_loss
+    g_loss_total = rec_loss_1 + rec_loss_2 + gan_g_loss_1 + gan_g_loss_2 + patch_loss
+    
+    return g_loss_total, rec_loss_1, rec_loss_2, patch_loss
 
 
 class Trainer():
@@ -1316,9 +1314,9 @@ class Trainer():
             rec_loss_1 = rec_loss_1 + \
                 torch.div(rec_loss_1.detach(),
                           self.gradient_accumulate_every)
-
-            # rec_loss_2 = rec_loss_2 + torch.div(rec_loss_2.detach(), self.gradient_accumulate_every)
-
+            rec_loss_2 = rec_loss_2 + \
+                torch.div(rec_loss_2.detach(),
+                          self.gradient_accumulate_every)
             patch_loss = patch_loss + \
                 torch.div(patch_loss.detach(),
                           self.gradient_accumulate_every)
@@ -1327,7 +1325,7 @@ class Trainer():
         if (self.steps % 5 == 0):
             self.track(self.g_loss, 'G')
             self.track(rec_loss_1, 'RecLoss1')
-            # self.track(rec_loss_2, 'RecLoss2')
+            self.track(rec_loss_2, 'RecLoss2')
             self.track(patch_loss, 'GPatch')
 
         self.GAN.G_opt.step()
@@ -1401,7 +1399,7 @@ class Trainer():
         batch_size = I_t.shape[0]
 
         # Get encodings
-        # E_s = self.GAN.p_net(S_pose_map)
+        E_s = self.GAN.p_net(S_pose_map)
         E_t = self.GAN.p_net(T_pose_map)
         z_s = self.GAN.a_net(S_texture_map).expand(-1, num_layers, -1)
 
@@ -1409,9 +1407,10 @@ class Trainer():
 
         # regular
         size = min(8, batch_size)
-        generated_images = self.generate_truncated(self.GAN.G, z_s, noise, E_t)
+        generated_images = self.generate_truncated(self.GAN.G, z_s, noise, E_s)
         generated_stack = torch.cat(
             (I_s[:size], I_t[:size], generated_images[:size]), dim=0)
+       
         save_path = str(self.results_dir / self.name / f'{str(num)}.{ext}')
         torchvision.utils.save_image(generated_stack, save_path, nrow=size)
 
@@ -1420,8 +1419,7 @@ class Trainer():
 
         # moving averages
 
-        generated_images = self.generate_truncated(
-            self.GAN.GE, z_s, noise, E_t)
+        generated_images = self.generate_truncated(self.GAN.GE, z_s, noise, E_s)
         generated_stack = torch.cat(
             (I_s[:size], I_t[:size], generated_images[:size]), dim=0)
         save_path = str(self.results_dir / self.name / f'{str(num)}-ema.{ext}')
