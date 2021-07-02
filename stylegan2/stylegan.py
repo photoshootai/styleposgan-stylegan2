@@ -30,6 +30,7 @@ from kornia.filters import filter2D
 import torchvision
 from torchvision import transforms
 
+from .diff_augment import *
 
 from vector_quantize_pytorch import VectorQuantize
 from .version import __version__
