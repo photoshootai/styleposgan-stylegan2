@@ -758,7 +758,7 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
 
         self.vgg = VGG16Perceptual(requires_grad=False).eval()
         self.face_id = FaceIDLoss(
-            self.mtcnn_crop_size, requires_grad=False).eval()
+            self.mtcnn_crop_size, requires_grad=False, rank=rank).eval()
 
         # if cl_reg:
         #     from contrastive_learner import ContrastiveLearner
