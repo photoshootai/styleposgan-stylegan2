@@ -759,9 +759,10 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
         self.a_net = ANet(im_chan=3)
         self.p_net = PNet(im_chan=3)
 
-        self.vgg = VGG16Perceptual(requires_grad=False).eval()
-        self.face_id = FaceIDLoss(
-            self.mtcnn_crop_size, requires_grad=False, rank=rank).eval()
+        #TODO Keep this if state cannot be loaded and delete if once you have saved at least once
+
+        # self.vgg = VGG16Perceptual(requires_grad=False).eval()
+        # self.face_id = FaceIDLoss(self.mtcnn_crop_size, requires_grad=False, rank=rank).eval()
 
         # if cl_reg:
         #     from contrastive_learner import ContrastiveLearner
@@ -920,6 +921,10 @@ class Trainer():
         self.GAN_params = [args, kwargs]
         self.GAN = None
 
+        #Refactored out VGG and FaceNet out of self.GAN into Trainer class to prevent saving
+        self.face_id_model = None
+        self.vgg_model = None
+
         self.name = name
 
         base_dir = Path(base_dir)
@@ -1002,6 +1007,8 @@ class Trainer():
         self.rank = rank
         self.world_size = world_size
 
+        self.mtcnn_crop_size = 160
+
         h_params = {'image_size': self.image_size,
                     'network_capacity': self.network_capacity,
                     "fmap_max": self.fmap_max,
@@ -1033,6 +1040,9 @@ class Trainer():
         self.GAN = StyleGAN2(lr=self.lr, ttur_mult=self.ttur_mult, image_size=self.image_size, network_capacity=self.network_capacity, fmap_max=self.fmap_max,
                              transparent=self.transparent, fq_layers=self.fq_layers, fq_dict_size=self.fq_dict_size, attn_layers=self.attn_layers, fp16=self.fp16, cl_reg=self.cl_reg, rank=self.rank, *args, **kwargs)
 
+        self.vgg_model = VGG16Perceptual(requires_grad=False).eval().cuda(self.rank)
+        self.face_id_model = FaceIDLoss(self.mtcnn_crop_size, requires_grad=False, rank=self.rank).eval().cuda(self.rank)
+
         if self.is_ddp:
             ddp_kwargs = {'device_ids': [
                 self.rank], 'broadcast_buffers': False}
@@ -1046,9 +1056,8 @@ class Trainer():
             self.p_net_ddp = DDP(self.GAN.p_net, **ddp_kwargs)
             self.d_patch_ddp = DDP(self.GAN.d_patch, **ddp_kwargs)
 
-            self.vgg_ddp = self.GAN.vgg  # DDP(self.GAN.vgg, **ddp_kwargs)
-            # DDP(self.GAN.face_id, **ddp_kwargs)
-            self.face_id_ddp = self.GAN.face_id
+            self.vgg_ddp = self.vgg_model   
+            self.face_id_ddp = self.face_id_model 
 
         if exists(self.logger):
             self.logger.watch(self.GAN)
@@ -1099,6 +1108,7 @@ class Trainer():
         if not exists(self.GAN):  # PNet ANet initializations coupled with self.GAN
             self.init_GAN()
 
+
         self.GAN.train()
         total_disc_loss = torch.tensor(0.).cuda(self.rank)
         total_gen_loss = torch.tensor(0.).cuda(self.rank)
@@ -1125,9 +1135,9 @@ class Trainer():
         a_net = self.GAN.a_net if not self.is_ddp else self.a_net_ddp
         d_patch = self.GAN.d_patch if not self.is_ddp else self.d_patch_ddp
 
-        vgg_model = self.GAN.vgg if not self.is_ddp else self.vgg_ddp
-        face_id_model = self.GAN.face_id if not self.is_ddp else self.face_id_ddp
-        mtcnn_crop_size = self.GAN.mtcnn_crop_size
+        vgg_model = self.vgg_model if not self.is_ddp else self.vgg_ddp
+        face_id_model = self.face_id_model if not self.is_ddp else self.face_id_ddp
+        mtcnn_crop_size = self.face_id_model.mtcnn_crop_size
 
         backwards = partial(loss_backwards, self.fp16)
 
@@ -1371,6 +1381,7 @@ class Trainer():
 
         if self.is_main:
             if self.steps % self.save_every == 0:
+                print("Saving checkpoint")
                 self.save(self.checkpoint_num)
 
             if self.steps % self.evaluate_every == 0 or (self.steps % 125 == 0 and self.steps < 2500):
@@ -1632,6 +1643,15 @@ class Trainer():
         self.init_folders()
 
     def save(self, num):
+        #Handling logic to ensure that we dont have vgg and face_id being saved
+        if hasattr(self.GAN, 'vgg'):
+            print("Had vgg in GAN, deleting ")
+            del self.GAN.vgg
+        if hasattr(self.GAN, 'face_id'):
+            print("Had face id in GAN, deleting ")
+            del self.GAN.face_id
+
+
         save_data = {
             'GAN': self.GAN.state_dict(),
             'version': __version__
@@ -1666,6 +1686,11 @@ class Trainer():
 
         try:
             self.GAN.load_state_dict(load_data['GAN'])
+            #TOD): add overwriting face_id_model and vgg_model
+            self.vgg_model = VGG16Perceptual(requires_grad=False).eval().cuda(self.rank)
+            self.face_id_model = FaceIDLoss(self.mtcnn_crop_size, requires_grad=False, rank=self.rank).eval().cuda(self.rank)
+            
+        
         except Exception as e:
             print('unable to load save model. please try downgrading the package to the version specified by the saved model')
             raise e
