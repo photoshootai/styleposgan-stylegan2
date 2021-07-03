@@ -195,7 +195,7 @@ class MTCNN(nn.Module):
     def __init__(
         self, image_size=160, margin=0, min_face_size=20,
         thresholds=[0.6, 0.7, 0.7], factor=0.709, post_process=True,
-        select_largest=True, selection_method=None, keep_all=False):
+        select_largest=True, selection_method=None, keep_all=False, device=None):
         super().__init__()
 
         self.image_size = image_size
@@ -213,9 +213,11 @@ class MTCNN(nn.Module):
         self.onet = ONet()
 
         # self.device = torch.device('cpu')
-        # if device is not None:
-        #     self.device = device
-        #     self.to(device)
+        if device is not None:
+            self.device = device
+            self.to(device)
+        else:
+            self.device = torch.device('cpu')
 
         if not self.selection_method:
             self.selection_method = 'largest' if self.select_largest else 'probability'
@@ -315,8 +317,8 @@ class MTCNN(nn.Module):
                 self.rnet,
                 self.onet,
                 self.thresholds,
-                self.factor
-                # img.device   #the device is being used further down in detect(), etc. Easiest way to ensure device agnositic behaviour is to take the device from the input img
+                self.factor,
+                self.device   #the device is being used further down in detect(), etc. Easiest way to ensure device agnositic behaviour is to take the device from the input img
             )
 
         boxes, probs, points = [], [], []
@@ -338,9 +340,9 @@ class MTCNN(nn.Module):
                 boxes.append(box[:, :4])
                 probs.append(box[:, 4])
                 points.append(point)
-        boxes = torch.tensor(boxes)# np.array(boxes)
-        probs = torch.tensor(probs)# np.array(probs)
-        points = torch.tensor(points)# np.array(points)
+        boxes = torch.tensor(boxes, device=self.device)# np.array(boxes)
+        probs = torch.tensor(probs, device=self.device)# np.array(probs)
+        points = torch.tensor(points, device=self.device)# np.array(points)
 
         if (
             not isinstance(img, (list, tuple)) and 
@@ -410,9 +412,9 @@ class MTCNN(nn.Module):
                 continue
             
             # If at least 1 box found
-            boxes = torch.tensor(boxes)# np.array(boxes)
-            probs = torch.tensor(probs)# np.array(probs)
-            points = torch.tensor(points)# np.array(points)
+            boxes = torch.tensor(boxes, device=self.device)# np.array(boxes)
+            probs = torch.tensor(probs, device=self.device)# np.array(probs)
+            points = torch.tensor(points, device=self.device)# np.array(points)
         
             if method == 'largest':
                 box_order = torch.argsort((boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1]))[::-1]  # np.argsort
@@ -421,7 +423,7 @@ class MTCNN(nn.Module):
             elif method == 'center_weighted_size':
                 box_sizes = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
                 img_center = (img.width / 2, img.height/2)
-                box_centers = torch.tensor(list(zip((boxes[:, 0] + boxes[:, 2]) / 2, (boxes[:, 1] + boxes[:, 3]) / 2)))
+                box_centers = torch.tensor(list(zip((boxes[:, 0] + boxes[:, 2]) / 2, (boxes[:, 1] + boxes[:, 3]) / 2)), device=self.device)
                 offsets = box_centers - img_center
                 offset_dist_squared = torch.sum(torch.pow(offsets, 2.0), 1)  # np.sum and np.power 
                 box_order = torch.argsort(box_sizes - offset_dist_squared * center_weight)[::-1]  # np.argsort
@@ -443,9 +445,9 @@ class MTCNN(nn.Module):
             selected_points.append(point)
 
         if batch_mode:
-            selected_boxes = torch.tensor(selected_boxes)# np.array(selected_boxes)
-            selected_probs = torch.tensor(selected_probs)# np.array(selected_probs)
-            selected_points = torch.tensor(selected_points)# np.array(selected_points)
+            selected_boxes = torch.tensor(selected_boxes, device=self.device)# np.array(selected_boxes)
+            selected_probs = torch.tensor(selected_probs, device=self.device)# np.array(selected_probs)
+            selected_points = torch.tensor(selected_points, device=self.device)# np.array(selected_points)
         else:
             selected_boxes = selected_boxes[0]
             selected_probs = selected_probs[0][0]

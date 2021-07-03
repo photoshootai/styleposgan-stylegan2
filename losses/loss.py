@@ -23,8 +23,8 @@ def calcaluate_l_vgg(gen_tuples, gt_tuples):
         total += (1/len(gen_tuples[i])) * get_l1_loss(gen_tuples[i], gt_tuples[i])
     return total
 
-def get_face_id_loss(generated, gt, face_id_loss_model, crop_size):
-    return face_id_loss_model(generated, gt, crop_size)
+def get_face_id_loss(generated, gt, face_id_loss_model, crop_size, device='cuda:0'):
+    return face_id_loss_model(generated, gt, crop_size, device)
 
 
 

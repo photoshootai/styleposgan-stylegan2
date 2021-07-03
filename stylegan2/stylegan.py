@@ -4,6 +4,8 @@ import json
 
 from tqdm import tqdm
 from math import floor, log2
+
+
 from random import random
 from shutil import rmtree
 from functools import partial
@@ -30,6 +32,7 @@ from kornia.filters import filter2D
 import torchvision
 from torchvision import transforms
 
+from .diff_augment import *
 
 from vector_quantize_pytorch import VectorQuantize
 from .version import __version__
@@ -758,7 +761,7 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
 
         self.vgg = VGG16Perceptual(requires_grad=False).eval()
         self.face_id = FaceIDLoss(
-            self.mtcnn_crop_size, requires_grad=False).eval()
+            self.mtcnn_crop_size, requires_grad=False, rank=rank).eval()
 
         # if cl_reg:
         #     from contrastive_learner import ContrastiveLearner
@@ -778,8 +781,7 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
         self.G_opt = Adam(generator_params, lr=self.lr, betas=(0.5, 0.9))
         disc_params = list(self.D.parameters()) + \
             list(self.d_patch.parameters())
-        self.D_opt = Adam(disc_params, lr=self.lr *
-                          ttur_mult, betas=(0.5, 0.9))
+        self.D_opt = Adam(disc_params, lr=self.lr , betas=(0.5, 0.9)) #Removed ttur multiplication here
 
         # init weights
         self._init_weights()
@@ -854,9 +856,9 @@ def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_outp
 
     patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, d_patch_model)
 
-    rec_loss_1 = weight_l1 * get_l1_loss(I_dash_s, I_s) + weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s, I_s) #+ weight_face * get_face_id_loss(I_dash_s, I_s, face_id_model, crop_size=mtcnn_crop_size)
+    rec_loss_1 = weight_l1 * get_l1_loss(I_dash_s, I_s) + weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s, I_s) + weight_face * get_face_id_loss(I_dash_s, I_s, face_id_model, crop_size=mtcnn_crop_size)
 
-    rec_loss_2 = weight_l1 * get_l1_loss(I_dash_s_to_t, I_t) + weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s_to_t, I_t) #+ weight_face * get_face_id_loss(I_dash_s_to_t, I_t, face_id_model, crop_size=mtcnn_crop_size)
+    rec_loss_2 = weight_l1 * get_l1_loss(I_dash_s_to_t, I_t) + weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s_to_t, I_t) + weight_face * get_face_id_loss(I_dash_s_to_t, I_t, face_id_model, crop_size=mtcnn_crop_size)
 
     g_loss_total = rec_loss_1 + rec_loss_2 + gan_g_loss_1 + gan_g_loss_2 + patch_loss
     
@@ -1297,6 +1299,7 @@ class Trainer():
             gen_loss = loss
 
             if apply_path_penalty:
+                #w.r.t I_dash_s
                 pl_lengths = calc_pl_lengths(z_s, I_dash_s)
                 avg_pl_length = torch.mean(pl_lengths.detach())
 
@@ -1304,6 +1307,15 @@ class Trainer():
                     pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
                     if not torch.isnan(pl_loss):
                         gen_loss = gen_loss + pl_loss
+
+                #w.r.t I_dash_to_t
+                pl_lengths = calc_pl_lengths(z_s, I_dash_s_to_t)
+                avg_pl_length = torch.mean(pl_lengths.detach())
+                if not is_empty(self.pl_mean):
+                    pl_loss2 = ((pl_lengths - self.pl_mean) ** 2).mean()
+                    if not torch.isnan(pl_loss):
+                        gen_loss = gen_loss + pl_loss2
+
 
             gen_loss = gen_loss / self.gradient_accumulate_every
             gen_loss.register_hook(raise_if_nan)
