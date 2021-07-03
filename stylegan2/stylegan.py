@@ -737,7 +737,7 @@ class Discriminator(nn.Module):
 
 
 class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
-    def __init__(self, image_size, latent_dim=2048, mtcnn_crop_size=160, fmap_max=512, style_depth=8, network_capacity=16, transparent=False, fp16=False, cl_reg=False, steps=1, lr=1e-4, ttur_mult=2, fq_layers=[], fq_dict_size=256, attn_layers=[], no_const=False, rank=0):
+    def __init__(self, image_size, latent_dim=2048, mtcnn_crop_size=160, fmap_max=512, style_depth=8, network_capacity=16, transparent=False, fp16=False, cl_reg=False, steps=1, lr=1e-4, ttur_mult=2, fq_layers=[], fq_dict_size=256, attn_layers=[], no_const=False, lr_mlp=0.1, rank=0):
         super().__init__()
         self.lr = lr
         self.steps = steps
@@ -776,16 +776,13 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
         # turn off grad for exponential moving averages
         set_requires_grad(self.GE, False)
 
-
-        adam_betas = (0.0, 0.99)
-
         # init optimizers
-        generator_params = list(self.G.parameters()) + list(self.a_net.parameters()) + list(self.p_net.parameters())
-        self.G_opt = Adam(generator_params, lr=self.lr, betas=adam_betas)
-
-        
-        disc_params = list(self.D.parameters()) + list(self.d_patch.parameters())
-        self.D_opt = Adam(disc_params, lr=self.lr , betas=adam_betas) #Removed ttur multiplication here
+        generator_params = list(self.G.parameters(
+        )) + list(self.a_net.parameters()) + list(self.p_net.parameters())
+        self.G_opt = Adam(generator_params, lr=self.lr, betas=(0.5, 0.9))
+        disc_params = list(self.D.parameters()) + \
+            list(self.d_patch.parameters())
+        self.D_opt = Adam(disc_params, lr=self.lr , betas=(0.5, 0.9)) #Removed ttur multiplication here
 
         # init weights
         self._init_weights()
@@ -885,8 +882,8 @@ class Trainer():
         batch_size=4,
         mixed_prob=0.9,
         gradient_accumulate_every=1,
-        lr=2e-3, #Changed to match papers
-        # lr_mlp=0.1,
+        lr=2e-4,
+        lr_mlp=0.1,
         ttur_mult=2,
         rel_disc_loss=False,
         num_workers=None,
@@ -952,7 +949,7 @@ class Trainer():
         self.aug_types = aug_types
 
         self.lr = lr
-        # self.lr_mlp = lr_mlp
+        self.lr_mlp = lr_mlp
         self.ttur_mult = ttur_mult
         self.rel_disc_loss = rel_disc_loss
         self.batch_size = batch_size
@@ -1037,7 +1034,7 @@ class Trainer():
 
     def init_GAN(self):
         args, kwargs = self.GAN_params
-        self.GAN = StyleGAN2(lr=self.lr, ttur_mult=self.ttur_mult, image_size=self.image_size, network_capacity=self.network_capacity, fmap_max=self.fmap_max,
+        self.GAN = StyleGAN2(lr=self.lr, lr_mlp=self.lr_mlp, ttur_mult=self.ttur_mult, image_size=self.image_size, network_capacity=self.network_capacity, fmap_max=self.fmap_max,
                              transparent=self.transparent, fq_layers=self.fq_layers, fq_dict_size=self.fq_dict_size, attn_layers=self.attn_layers, fp16=self.fp16, cl_reg=self.cl_reg, rank=self.rank, *args, **kwargs)
 
         self.vgg_model = VGG16Perceptual(requires_grad=False).eval().cuda(self.rank)
@@ -1076,12 +1073,12 @@ class Trainer():
         self.fmap_max = config.pop('fmap_max', 512)
         self.attn_layers = config.pop('attn_layers', [])
         self.no_const = config.pop('no_const', False)
-        # self.lr_mlp = config.pop('lr_mlp', 0.1)
+        self.lr_mlp = config.pop('lr_mlp', 0.1)
         del self.GAN
         self.init_GAN()
 
     def config(self):
-        return {'image_size': self.image_size, 'network_capacity': self.network_capacity, 'transparent': self.transparent, 'fq_layers': self.fq_layers, 'fq_dict_size': self.fq_dict_size, 'attn_layers': self.attn_layers, 'no_const': self.no_const}
+        return {'image_size': self.image_size, 'network_capacity': self.network_capacity, 'lr_mlp': self.lr_mlp, 'transparent': self.transparent, 'fq_layers': self.fq_layers, 'fq_dict_size': self.fq_dict_size, 'attn_layers': self.attn_layers, 'no_const': self.no_const}
 
     def set_data_src(self, folder):
         self.dataset = DeepFashionDataset(
