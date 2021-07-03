@@ -22,24 +22,13 @@ def fixed_batch_process(im_data, model):
 
     return tuple(torch.cat(v, dim=0) for v in zip(*out))
 
-def detect_face(imgs, minsize, pnet, rnet, onet, threshold, factor):
+def detect_face(imgs, minsize, pnet, rnet, onet, threshold, factor, device='cuda:0'):
     if isinstance(imgs, (np.ndarray, torch.Tensor)):
-        if isinstance(imgs,np.ndarray):
-            imgs = torch.as_tensor(imgs.copy())
-
         if isinstance(imgs, torch.Tensor):  # should always run
             imgs = torch.as_tensor(imgs)
 
         if len(imgs.shape) == 3:
             imgs = imgs.unsqueeze(0)
-    else:
-        if not isinstance(imgs, (list, tuple)):
-            imgs = [imgs]
-        if any(img.size != imgs[0].size for img in imgs):
-            raise Exception("MTCNN batch processing only compatible with equal-dimension images.")
-        imgs = torch.stack([torch.uint8(img) for img in imgs]) # used to be np.stack, np.unint8(img)
-        # imgs = torch.as_tensor(imgs.copy())
-
     
 
     model_dtype = next(pnet.parameters()).dtype
@@ -88,16 +77,15 @@ def detect_face(imgs, minsize, pnet, rnet, onet, threshold, factor):
     # print('boxes:', boxes)
     # print('image_inds', image_inds)
     # print('scale_picks', scale_picks)
-    if scale_picks.numel() != 0: # added for indexing issues on next lines
-        boxes = boxes[scale_picks]
-        image_inds = image_inds[scale_picks]
-
+    # if scale_picks.numel() != 0: # added for indexing issues on next lines
+    boxes = boxes[scale_picks]
+    image_inds = image_inds[scale_picks]
 
     # NMS within each image
     pick = batched_nms(boxes[:, :4], boxes[:, 4], image_inds, 0.7)
-    if pick.numel() != 0: # added for indexing issues on next lines
-        boxes =  boxes[pick]
-        image_inds = image_inds[pick]
+    # if pick.numel() != 0: # added for indexing issues on next lines
+    boxes =  boxes[pick]
+    image_inds = image_inds[pick]
 
     regw = boxes[:, 2] - boxes[:, 0]
     regh = boxes[:, 3] - boxes[:, 1]
@@ -137,7 +125,7 @@ def detect_face(imgs, minsize, pnet, rnet, onet, threshold, factor):
         boxes = rerec(boxes)
 
     # Third stage
-    points = torch.zeros(0, 5, 2)
+    points = torch.zeros(0, 5, 2, device=device)
     if len(boxes) > 0:
         y, ey, x, ex = pad(boxes, w, h)
         im_data = []
@@ -182,13 +170,12 @@ def detect_face(imgs, minsize, pnet, rnet, onet, threshold, factor):
     batch_points = []
     for b_i in range(batch_size):
         b_i_inds = torch.where(image_inds == b_i)
-        if boxes.numel() != 0:  # added for indexing issues on next line
-            batch_boxes.append(boxes[b_i_inds].clone())  # changed from boxes[b_i_inds].copy()
-        if points.numel() != 0: # added for indexing issues on next line
-            batch_points.append(points[b_i_inds].clone())  # changed from points[b_i_inds].copy() 
+        # if boxes.numel() != 0:  # added for indexing issues on next line
+        batch_boxes.append(boxes[b_i_inds].clone())  # changed from boxes[b_i_inds].copy()
+        # if points.numel() != 0: # added for indexing issues on next line
+        batch_points.append(points[b_i_inds].clone())  # changed from points[b_i_inds].copy() 
 
-    # batch_boxes, batch_points = np.array(batch_boxes), np.array(batch_points)
-
+    batch_boxes, batch_points = np.array(batch_boxes), np.array(batch_points)
     return batch_boxes, batch_points
 
 
@@ -265,8 +252,9 @@ def nms_numpy(boxes, scores, threshold, method):
 
 
 def batched_nms_numpy(boxes, scores, idxs, threshold, method):
+    device = boxes.device
     if boxes.numel() == 0:
-        return torch.empty((0,), dtype=torch.int64)
+        return torch.empty((0,), dtype=torch.int64, device=device)
     # strategy: in order to perform NMS independently per class.
     # we add an offset to all the boxes. The offset is dependent
     # only on the class idx, and is large enough so that boxes
@@ -277,7 +265,7 @@ def batched_nms_numpy(boxes, scores, idxs, threshold, method):
     # boxes_for_nms = boxes_for_nms.cpu().numpy()
     # scores = scores.cpu().numpy()
     keep = nms_numpy(boxes_for_nms, scores, threshold, method)
-    return torch.as_tensor(keep, dtype=torch.long)
+    return keep.long() #torch.as_tensor(keep, dtype=torch.long, device=device)
 
 
 def pad(boxes, w, h):
@@ -313,36 +301,21 @@ def imresample(img, sz):
 
 
 def crop_resize(img, box, image_size):
-    if isinstance(img, np.ndarray):
-        img = img[box[1]:box[3], box[0]:box[2]]
-        out = cv2.resize(
-            img,
-            (image_size, image_size),
-            interpolation=cv2.INTER_AREA
-        ).copy()
-    elif isinstance(img, torch.Tensor): # should always be this case
+    if isinstance(img, torch.Tensor): # should always be this case
         img = img[box[1]:box[3], box[0]:box[2]]
         out = imresample(
             img.permute(2, 0, 1).unsqueeze(0).float(),
             (image_size, image_size)
         ).byte().squeeze(0).permute(1, 2, 0)
-    else:
-        out = img.crop(box).copy().resize((image_size, image_size), Image.BILINEAR)
     return out
 
 
 def save_img(img, path):
-    if isinstance(img, np.ndarray):
-        cv2.imwrite(path, cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
-    else:
-        img.save(path)
+    img.save(path)
 
 
 def get_size(img):
-    if isinstance(img, (np.ndarray, torch.Tensor)):
-        return img.shape[1::-1]
-    else:
-        return img.size
+    return img.shape[1::-1]
 
 
 def extract_face(img, box, image_size=160, margin=0, save_path=None):
@@ -375,9 +348,9 @@ def extract_face(img, box, image_size=160, margin=0, save_path=None):
 
     face = crop_resize(img, box, image_size)
 
-    if save_path is not None:
-        os.makedirs(os.path.dirname(save_path) + "/", exist_ok=True)
-        save_img(face, save_path)
+    # if save_path is not None:
+    #     os.makedirs(os.path.dirname(save_path) + "/", exist_ok=True)
+    #     save_img(face, save_path)
 
     face = torch.float32(face)# face = F.to_tensor(np.float32(face))
 
