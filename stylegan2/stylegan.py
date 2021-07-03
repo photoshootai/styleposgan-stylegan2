@@ -860,6 +860,7 @@ def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_outp
 
     rec_loss_2 = weight_l1 * get_l1_loss(I_dash_s_to_t, I_t) + weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s_to_t, I_t) + weight_face * get_face_id_loss(I_dash_s_to_t, I_t, face_id_model, crop_size=mtcnn_crop_size)
 
+
     g_loss_total = rec_loss_1 + rec_loss_2 + gan_g_loss_1 + gan_g_loss_2 + patch_loss
     
     return g_loss_total, rec_loss_1, rec_loss_2, patch_loss
@@ -1411,7 +1412,7 @@ class Trainer():
         batch_size = I_t.shape[0]
 
         # Get encodings
-        # E_s = self.GAN.p_net(S_pose_map)
+        E_s = self.GAN.p_net(S_pose_map)
         E_t = self.GAN.p_net(T_pose_map)
         z_s = self.GAN.a_net(S_texture_map).expand(-1, num_layers, -1)
 
@@ -1419,9 +1420,10 @@ class Trainer():
 
         # regular
         size = min(8, batch_size)
-        generated_images = self.generate_truncated(self.GAN.G, z_s, noise, E_t)
+        generated_images = self.generate_truncated(self.GAN.G, z_s, noise, E_s)
         generated_stack = torch.cat(
             (I_s[:size], I_t[:size], generated_images[:size]), dim=0)
+       
         save_path = str(self.results_dir / self.name / f'{str(num)}.{ext}')
         torchvision.utils.save_image(generated_stack, save_path, nrow=size)
 
@@ -1430,8 +1432,7 @@ class Trainer():
 
         # moving averages
 
-        generated_images = self.generate_truncated(
-            self.GAN.GE, z_s, noise, E_t)
+        generated_images = self.generate_truncated(self.GAN.GE, z_s, noise, E_s)
         generated_stack = torch.cat(
             (I_s[:size], I_t[:size], generated_images[:size]), dim=0)
         save_path = str(self.results_dir / self.name / f'{str(num)}-ema.{ext}')
