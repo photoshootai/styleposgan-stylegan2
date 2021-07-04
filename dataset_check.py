@@ -28,16 +28,16 @@ def show_batch(batch):
         im = transforms.ToPILImage()(P_t[i]).convert("RGB")
         # im.show("Target Pose Map")
 
-        input("Press Enter to continue...")
+        # input("Press Enter to continue...")
 
 
 def main():
     data_path = "./data/DeepFashionWithFace"
     batch_size = 4
     num_workers = 1
-    image_size = (512, 512)
+    image_size = (256, 256)
 
-    dataset = DeepFashionDataset(data_path, image_size=image_size, seed=80) #Change seed to get different images
+    dataset = DeepFashionDataset(data_path, image_size=image_size, seed=90, props={'model', 'clothing_id'}) #Change seed to get different images
     dataloader = DataLoader(
         dataset, batch_size=batch_size, num_workers=num_workers)
 

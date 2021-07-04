@@ -39,7 +39,9 @@ Thumbs.db
 .vscode/
 
 #Styleposegan specific
-/data
+/data/*/
+/data/*.zip
+
 tb_logs/
 /test_ims 
 /checkpoints
