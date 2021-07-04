@@ -1,11 +1,17 @@
 import os
+# from posixpath import basename
+import time
 import random
+import re
 from functools import partial, reduce
-from itertools import chain, repeat, starmap
+from itertools import chain, repeat, starmap, compress, permutations
 from math import ceil
-from typing import Iterable, Tuple, Union, Set
+from typing import Iterable, Tuple, Union, Set, List
+from multiprocessing import Pool
+from numpy import iterable
 
 import torch
+import pickle
 import torch.nn as nn
 from PIL import Image
 from torch.utils.data import Dataset
@@ -68,7 +74,7 @@ class scale_and_crop(object):
         # self.crop = transforms.RandomCrop(img_size)
 
     def __call__(self, image_tensor: torch.Tensor) -> torch.Tensor:        
-        image_tensor = resize_to_minimum_size(max(self.img_size), image_tensor)
+        # image_tensor = resize_to_minimum_size(max(self.img_size), image_tensor)
         _, h, w = image_tensor.shape  # should be applied after transforms.ToTensor()
         new_h, new_w = self.img_size
 
@@ -92,11 +98,14 @@ cat_map = {'sex': 0, 'clothing_category': 1, 'const_1': 2, 'model': 3, 'clothing
 
 def extract_prop(file_name: str, props: Set[str]={'model'}) -> Tuple[str]:
     """
-    {sex}_{clothing_category}_id_{model}_{clothing_id}_{idx}_{pose}.jpg
+    /PATH/{sex}_{clothing_category}_id_{model}_{clothing_id}_{idx}_{pose}.jpg
     """
     idxs = {v for k, v in cat_map.items() if k in props}
     mask = (1 if i in idxs else 0 for i in range(len(cat_map)))
-    return tuple(compress(os.path.splitext(file_name)[0].split('_'), mask))
+    base_name = os.path.splitext(file_name)[0]
+    match = re.match(r'([A-Z]+)\_(.+)\_(id)\_(\d+)\_(\d+)\_(\d+)\_(.+)', base_name)
+    return tuple(compress(match.groups(), mask))
+    # return tuple(compress(os.path.splitext(file_name)[0].split('_'), mask)) # [a, b, c, d] compress with [0. 1. 1, 0] => [b, c]
 
 
 def random_shuffle(files: List[str], seed: int=42) -> Iterable[Tuple[str]]:
@@ -104,22 +113,31 @@ def random_shuffle(files: List[str], seed: int=42) -> Iterable[Tuple[str]]:
         return list()
     random.seed(seed)
     random.shuffle(files)
-    mid = len(files) // 2
-    return chain(zip(files[:mid], files[mid:]), zip(files[mid:], files[:mid]))
+    return permutations(files, 2) # files[::-1])
 
+def filter_opt(opt, files, props):
+    return [f for f in files if opt == extract_prop(f, props)]
 
-def conditional_shuffle(files: Iterable[str], props: Set[str], seed: int=42) -> Iterable[Tuple[str]]:
+def conditional_shuffle(files: Iterable[str], props: Set[str], n_threads: int=12, seed: int=42) -> Iterable[Tuple[str]]:
     extract = partial(extract_prop, props=props)
     opts = set(extract(f) for f in files)
-    groups = (list(filter(lambda f: opt == extract(f), files)) for opt in opts)
-    pairs = chain(random_shuffle(group, seed=seed) for group in groups)
-    return (pair for pair in pairs if pair)
+    # print(len(opts), next(iter(opts)))
+    with Pool(n_threads) as P:
+        groups = P.starmap(filter_opt, zip(opts, repeat(files), repeat(props)))
+        pairs = P.starmap(random_shuffle, zip(groups, repeat(seed))) #for group in groups)
+        # groups = (list(filter(lambda f: opt == extract(f), files)) for opt in opts)
+    # print(next(groups))
+    
+    pruned_pairs = (pair for pair in chain.from_iterable(pairs) if pair)
+    # print(len(list(pruned_pairs)))
+    return pruned_pairs # {x | x \in R, if x > 0}
 
 
 class DeepFashionDataset(Dataset):
     def __init__(self, data_dir: str, image_size: Union[Tuple[int], int, float] = (512, 512),
                  scale_crop: bool = True, transparent: bool = False, seed: int = 42,
-                 aug_prob: float = 0.0, pair_method: str = 'P_and_A', props: Union[Set[str], None] = None) -> None:
+                 aug_prob: float = 0.0, pair_method: str = 'P_and_A',
+                 props: Union[Set[str], None] = {'clothing', 'id', 'model'}) -> None:
         """
         Arguments:
             data_dir [str]: Path to data directory, should have subfolders {SourceImages, PoseMaps, TextureMaps}
@@ -144,25 +162,40 @@ class DeepFashionDataset(Dataset):
         self.img_dirs = tuple(map(in_data_dir, self.sub_dirs))
         assert all(map(os.path.isdir, self.img_dirs)), 'Some requisite image directories not found'
 
-        file_names = (d.name for d in os.scandir(self.img_dirs[0]))
-
-        if not props:
-            if pair_method == 'random':
-                self.data = list(random_shuffle(list(file_name), seed))
-            elif pair_method == 'P':
-                self.data = list(conditional_shuffle(files, props={'sex', 'model'}, seed=seed))
-            elif pair_method == 'P_and_A':
-                self.data = list(conditional_shuffle(files, props={'sex', 'clothing_category', 'model', 'clothing_id'}, seed=seed))
-            else:
-                raise Exception('Please ensure pair method is one of (\'random\' | \'P\' | \'P_and_A\')')   
-        elif props:
-            self.data = list(conditional_shuffle(files, props=props, seed=seed))
+        file_names = [d.name for d in os.scandir(self.img_dirs[0])]
+        pair_pickle = f'./data/pairs_{"_".join(sorted(list(props)))}_{os.path.basename(data_dir)}.pkl'
+        # print(pair_pickle)
+        # for i in range(10):
+            # print(extract_prop(file_names[i], props={'sex', 'clothing_category', 'model', 'clothing_id'}))
+        # exit()
+        if os.path.isfile(pair_pickle):
+            with open(pair_pickle, 'rb') as f:
+                data = pickle.load(f)
+                # print(type(data[0]))
+                # self.data = [*chain.from_iterable(x for x in data)]
+                self.data = data
+                print(len(data))
         else:
-            raise Exception(f'Please ensure props set is valid subset of {cat_map.keys()}')
- 
-        
+            start = time.time()
+            if not props:
+                if pair_method == 'random':
+                    self.data = list(random_shuffle(list(file_names), seed))
+                elif pair_method == 'P':
+                    self.data = list(conditional_shuffle(file_names, props={'sex', 'model'}, seed=seed))
+                elif pair_method == 'P_and_A':
+                    self.data = list(conditional_shuffle(file_names, props={'sex', 'clothing_category', 'model', 'clothing_id'}, seed=seed))
+                else:
+                    raise Exception('Please ensure pair method is one of (\'random\' | \'P\' | \'P_and_A\')')   
+            elif props:
+                self.data = list(conditional_shuffle(file_names, props=props, seed=seed))
+            else:
+                raise Exception(f'Please ensure props set is valid subset of {cat_map.keys()}')    
+            with open(pair_pickle, 'wb') as f:
+                pickle.dump(self.data, f)
+            print(f'Took {(time.time() - start):.4f} seconds to make pairs')
+
         self.data_len = len(self.data)
-        print('there are {self.data_len} pairs in this dataset')
+        print(f'there are {self.data_len} pairs in this dataset')
         assert self.data_len > 0, 'Empty dataset'
 
         # self.to_rgb = convert_transparent_to_rgb if transparent else lambda x: x
@@ -200,7 +233,10 @@ class DeepFashionDataset(Dataset):
         Returns:
             Source, Target [(tensor; (n_chan, img_size, img_size))]
         """
+        # print(tuple(self.data[0]))
+        # print(self.data[index])
         src_file, targ_file = self.data[index]
+        # print(type(src_file))
         src_im_paths = starmap(os.path.join, zip(self.img_dirs, repeat(src_file)))  # (src, pose, txt)
         targ_im_paths = starmap(os.path.join, zip(self.img_dirs, repeat(targ_file, 2)))  # (src, pose)
 
