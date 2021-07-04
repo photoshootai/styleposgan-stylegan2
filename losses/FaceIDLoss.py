@@ -11,7 +11,8 @@ class FaceIDLoss(nn.Module):
             self.device = 'cpu'
         else:
             self.device = f'cuda:{rank}'
-        
+
+        self.mtcnn_crop_size = mtcnn_crop_size
         self.mtcnn = MTCNN(image_size=mtcnn_crop_size, select_largest=True, device=self.device).eval()
         self.resnet = InceptionResnetV1(pretrained='vggface2', device=self.device).eval()
 
