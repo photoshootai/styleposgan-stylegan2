@@ -86,25 +86,26 @@ class scale_and_crop(object):
 
         return cropped
 
-cat_map = {'sex': 0, 'clothing_category': 1, 'model': 3, 'clothing_id': 4, 'idx': 5, 'pose': 6}
+
+cat_map = {'sex': 0, 'clothing_category': 1, 'const_1': 2, 'model': 3, 'clothing_id': 4, 'idx': 5, 'pose': 6}
+
 
 def extract_prop(file_name: str, props: Set[str]={'model'}) -> Tuple[str]:
     """
     {sex}_{clothing_category}_id_{model}_{clothing_id}_{idx}_{pose}.jpg
     """
-    idxs = (v for k, v in cat_map.items() if k in props)
-    return tuple(compress(os.path.splitext(file_name)[0].split('_'), idxs))
+    idxs = {v for k, v in cat_map.items() if k in props}
+    mask = (1 if i in idxs else 0 for i in range(len(cat_map)))
+    return tuple(compress(os.path.splitext(file_name)[0].split('_'), mask))
 
 
 def random_shuffle(files: List[str], seed: int=42) -> Iterable[Tuple[str]]:
     if len(files) < 2:
-        return []
-
+        return list()
     random.seed(seed)
-    random.shuffle(file_names)
-
-    mid = len(file_names) // 2
-    return chain(zip(file_names[:mid], file_names[mid:]), zip(file_names[mid:], file_names[:mid]))
+    random.shuffle(files)
+    mid = len(files) // 2
+    return chain(zip(files[:mid], files[mid:]), zip(files[mid:], files[:mid]))
 
 
 def conditional_shuffle(files: Iterable[str], props: Set[str], seed: int=42) -> Iterable[Tuple[str]]:
@@ -118,7 +119,7 @@ def conditional_shuffle(files: Iterable[str], props: Set[str], seed: int=42) -> 
 class DeepFashionDataset(Dataset):
     def __init__(self, data_dir: str, image_size: Union[Tuple[int], int, float] = (512, 512),
                  scale_crop: bool = True, transparent: bool = False, seed: int = 42,
-                 aug_prob: float = 0.0, pair_method: str = 'random', props: Union[Set[str], None] = None) -> None:
+                 aug_prob: float = 0.0, pair_method: str = 'P_and_A', props: Union[Set[str], None] = None) -> None:
         """
         Arguments:
             data_dir [str]: Path to data directory, should have subfolders {SourceImages, PoseMaps, TextureMaps}
