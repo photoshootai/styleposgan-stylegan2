@@ -1004,6 +1004,8 @@ class Trainer():
         self.world_size = world_size
 
         self.amp = amp
+        if self.amp:
+            print("Using amp for mixed precision training")
         self.G_scaler = GradScaler(enabled = self.amp)
         self.D_scaler = GradScaler(enabled = self.amp)
 
