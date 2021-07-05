@@ -5,11 +5,16 @@ from facenet_pytorch import MTCNN, InceptionResnetV1
 import numpy as np
 
 class FaceIDLoss(nn.Module):
-    def __init__(self, mtcnn_crop_size, weight=None, size_average= True, select_largest=True,  requires_grad=False):
+    def __init__(self, mtcnn_crop_size, weight=None, size_average= True, select_largest=True, requires_grad=False, rank=-1):
         super(FaceIDLoss, self).__init__()
+        if rank == -1:
+            self.device = 'cpu'
+        else:
+            self.device = f'cuda:{rank}'
 
-        self.mtcnn = MTCNN(image_size=mtcnn_crop_size, select_largest=True).eval()
-        self.resnet = InceptionResnetV1(pretrained='vggface2').eval()
+        self.mtcnn_crop_size = mtcnn_crop_size
+        self.mtcnn = MTCNN(image_size=mtcnn_crop_size, select_largest=True, device=self.device).eval()
+        self.resnet = InceptionResnetV1(pretrained='vggface2', device=self.device).eval()
 
         if not requires_grad:
             for param in self.mtcnn.parameters():
@@ -19,10 +24,10 @@ class FaceIDLoss(nn.Module):
             for param in self.resnet.parameters():
                 param.requires_grad = False
 
-    def set_mtcnn_device(self, device):
-        self.mtcnn.set_device(device)
+    # def set_mtcnn_device(self, device):
+    #     self.mtcnn.set_device(device)
 
-    def forward(self, generated, real, crop_size=160):
+    def forward(self, generated, real, crop_size=160, device='cuda:0'):
         # mtcnn uses deprecated numpy practices; need to suppress warnings 
         np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)
 
@@ -61,7 +66,7 @@ class FaceIDLoss(nn.Module):
         # print(mask)
 
         if not has_face_real:
-            return torch.tensor(0.0) #, device=device)
+            return torch.tensor(0.0, device=self.device)
         # print(len(has_face_real), len(should_have_face_gen))
 
         real_crops_with_face = torch.stack(has_face_real)#.to(device)

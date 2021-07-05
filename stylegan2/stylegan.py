@@ -4,6 +4,8 @@ import json
 
 from tqdm import tqdm
 from math import floor, log2
+
+
 from random import random
 from shutil import rmtree
 from functools import partial
@@ -30,6 +32,7 @@ from kornia.filters import filter2D
 import torchvision
 from torchvision import transforms
 
+from .diff_augment import *
 
 from vector_quantize_pytorch import VectorQuantize
 from .version import __version__
@@ -42,7 +45,7 @@ from models import ANet, PNet
 
 from losses import VGG16Perceptual, FaceIDLoss
 
-#torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
 import wandb
 
 from torch.cuda.amp import autocast, GradScaler
@@ -760,9 +763,10 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
         self.a_net = ANet(im_chan=3)
         self.p_net = PNet(im_chan=3)
 
-        self.vgg = VGG16Perceptual(requires_grad=False).eval()
-        self.face_id = FaceIDLoss(
-            self.mtcnn_crop_size, requires_grad=False).eval()
+        #TODO Keep this if state cannot be loaded and delete if once you have saved at least once
+
+        # self.vgg = VGG16Perceptual(requires_grad=False).eval()
+        # self.face_id = FaceIDLoss(self.mtcnn_crop_size, requires_grad=False, rank=rank).eval()
 
         # if cl_reg:
         #     from contrastive_learner import ContrastiveLearner
@@ -782,8 +786,7 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
         self.G_opt = Adam(generator_params, lr=self.lr, betas=(0.5, 0.9))
         disc_params = list(self.D.parameters()) + \
             list(self.d_patch.parameters())
-        self.D_opt = Adam(disc_params, lr=self.lr *
-                          ttur_mult, betas=(0.5, 0.9))
+        self.D_opt = Adam(disc_params, lr=self.lr , betas=(0.5, 0.9)) #Removed ttur multiplication here
 
         # init weights
         self._init_weights()
@@ -835,40 +838,33 @@ def get_d_total_loss(I_t, I_dash_s_to_t, pred_real_1, pred_fake_1, pred_real_2, 
     # patch loss
     patch_loss = get_patch_loss(I_dash_s_to_t, I_t, d_patch)
 
-    d_total_loss = gan_d_loss_1 + gan_d_loss_2 + \
-        torch.mul(patch_loss, -1)  # DPatch will maximize patch_loss
-    return d_total_loss
+    d_total_loss = gan_d_loss_1 + gan_d_loss_2 + torch.mul(patch_loss, -1)  # DPatch will maximize patch_loss
+    return d_total_loss, patch_loss  # Patch Loss needs to go up
 
 
 def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1, fake_output_2, real_output_2, vgg_model, face_id_model, d_patch_model, mtcnn_crop_size):
 
-    weight_l1 = 1
-    weight_vgg = 1
-    weight_face = 1
-    weight_gan = 1
-    weight_patch = 1
+    weight_l1 = 1.
+    weight_vgg = 1.
+    weight_face = 1.
+    weight_gan = 1.
+    weight_patch = 1.
 
     # GAN_d_loss1
-    gan_g_loss_1 = gen_hinge_loss(fake_output_1, real_output_1)
+    gan_g_loss_1 = weight_gan * gen_hinge_loss(fake_output_1, real_output_1)
     # GAN_d_loss2
-    gan_g_loss_2 = gen_hinge_loss(fake_output_2, real_output_2)
+    gan_g_loss_2 = weight_gan * gen_hinge_loss(fake_output_2, real_output_2)
 
-    patch_loss = get_patch_loss(I_dash_s_to_t, I_t, d_patch_model)
+    patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, d_patch_model)
 
-    rec_loss_1 = weight_l1 * get_l1_loss(I_dash_s, I_s) + \
-        weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s, I_s)  # + \
-    #weight_face * get_face_id_loss(I_dash_s, I_s, face_id_model, crop_size=mtcnn_crop_size)
+    rec_loss_1 = weight_l1 * get_l1_loss(I_dash_s, I_s) + weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s, I_s) + weight_face * get_face_id_loss(I_dash_s, I_s, face_id_model, crop_size=mtcnn_crop_size)
 
-    rec_loss_2 = weight_l1 * get_l1_loss(I_dash_s_to_t, I_t) + \
-        weight_vgg * \
-        get_perceptual_vgg_loss(vgg_model, I_dash_s_to_t, I_t)  # + \
-    # weight_face * get_face_id_loss(I_dash_s_to_t, I_t, face_id_model, crop_size=mtcnn_crop_size)
+    rec_loss_2 = weight_l1 * get_l1_loss(I_dash_s_to_t, I_t) + weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s_to_t, I_t) + weight_face * get_face_id_loss(I_dash_s_to_t, I_t, face_id_model, crop_size=mtcnn_crop_size)
 
 
-
-    g_loss_total = rec_loss_1 + rec_loss_2 + \
-        gan_g_loss_1 + gan_g_loss_2 + patch_loss
-    return g_loss_total
+    g_loss_total = rec_loss_1 + rec_loss_2 + gan_g_loss_1 + gan_g_loss_2 + patch_loss
+    
+    return g_loss_total, rec_loss_1, rec_loss_2, patch_loss
 
 
 class Trainer():
@@ -921,6 +917,10 @@ class Trainer():
     ):
         self.GAN_params = [args, kwargs]
         self.GAN = None
+
+        #Refactored out VGG and FaceNet out of self.GAN into Trainer class to prevent saving
+        self.face_id_model = None
+        self.vgg_model = None
 
         self.name = name
 
@@ -1010,9 +1010,11 @@ class Trainer():
         self.D_scaler = GradScaler(enabled = self.amp)
 
 
-        h_params = {'image_size': self.image_size, 
+        self.mtcnn_crop_size = 160
+
+        h_params = {'image_size': self.image_size,
                     'network_capacity': self.network_capacity,
-                    "fmap_max":self.fmap_max,
+                    "fmap_max": self.fmap_max,
                     "batch_size": self.batch_size,
                     "gradient_accumulate_every":self.gradient_accumulate_every,
                     "lr":self.lr,
@@ -1041,8 +1043,12 @@ class Trainer():
         self.GAN = StyleGAN2(lr=self.lr, lr_mlp=self.lr_mlp, ttur_mult=self.ttur_mult, image_size=self.image_size, network_capacity=self.network_capacity, fmap_max=self.fmap_max,
                              transparent=self.transparent, fq_layers=self.fq_layers, fq_dict_size=self.fq_dict_size, attn_layers=self.attn_layers, amp=self.amp, cl_reg=self.cl_reg, rank=self.rank, *args, **kwargs)
 
+        self.vgg_model = VGG16Perceptual(requires_grad=False).eval().cuda(self.rank)
+        self.face_id_model = FaceIDLoss(self.mtcnn_crop_size, requires_grad=False, rank=self.rank).eval().cuda(self.rank)
+
         if self.is_ddp:
-            ddp_kwargs = {'device_ids': [self.rank], 'broadcast_buffers': False}
+            ddp_kwargs = {'device_ids': [
+                self.rank], 'broadcast_buffers': False}
 
             self.G_ddp = DDP(self.GAN.G, **ddp_kwargs)
             self.D_ddp = DDP(self.GAN.D, **ddp_kwargs)
@@ -1053,13 +1059,11 @@ class Trainer():
             self.p_net_ddp = DDP(self.GAN.p_net, **ddp_kwargs)
             self.d_patch_ddp = DDP(self.GAN.d_patch, **ddp_kwargs)
 
-            self.vgg_ddp = self.GAN.vgg #DDP(self.GAN.vgg, **ddp_kwargs)
-            self.face_id_ddp = self.GAN.face_id # DDP(self.GAN.face_id, **ddp_kwargs)
+            self.vgg_ddp = self.vgg_model   
+            self.face_id_ddp = self.face_id_model 
 
         if exists(self.logger):
             self.logger.watch(self.GAN)
- 
-
 
     def write_config(self):
         self.config_path.write_text(json.dumps(self.config()))
@@ -1108,6 +1112,7 @@ class Trainer():
             self.init_GAN()
      
 
+
         self.GAN.train()
         total_disc_loss = torch.tensor(0.).cuda(self.rank)
         total_gen_loss = torch.tensor(0.).cuda(self.rank)
@@ -1134,9 +1139,9 @@ class Trainer():
         a_net = self.GAN.a_net if not self.is_ddp else self.a_net_ddp
         d_patch = self.GAN.d_patch if not self.is_ddp else self.d_patch_ddp
 
-        vgg_model = self.GAN.vgg if not self.is_ddp else self.vgg_ddp
-        face_id_model = self.GAN.face_id if not self.is_ddp else self.face_id_ddp
-        mtcnn_crop_size = self.GAN.mtcnn_crop_size
+        vgg_model = self.vgg_model if not self.is_ddp else self.vgg_ddp
+        face_id_model = self.face_id_model if not self.is_ddp else self.face_id_ddp
+        mtcnn_crop_size = self.face_id_model.mtcnn_crop_size
 
         amp_context = autocast if self.amp else null_context
         # setup losses
@@ -1205,8 +1210,8 @@ class Trainer():
                     fake_output_loss_2 = fake_output_loss_2 - real_output_2.mean()
 
                 # divergence = D_loss_fn(real_output_loss, fake_output_loss)
-                divergence = get_d_total_loss(I_t, I_dash_s_to_t, real_output_loss_1,
-                                            fake_output_loss_1, real_output_loss_2, fake_output_loss_2, d_patch)
+                divergence, patch_loss_to_track = get_d_total_loss(I_t, I_dash_s_to_t, real_output_loss_1,
+                                                                fake_output_loss_1, real_output_loss_2, fake_output_loss_2, d_patch)
                 disc_loss = divergence
 
                 if self.has_fq:
@@ -1284,10 +1289,12 @@ class Trainer():
             
             #TODO: check this with original Stylegan2 code: divide inside vs divide outlis
             total_disc_loss = total_disc_loss + torch.div(divergence.detach(), self.gradient_accumulate_every)
+            patch_loss_to_track = patch_loss_to_track + torch.div(patch_loss_to_track.detach(), self.gradient_accumulate_every)
 
         self.d_loss = float(total_disc_loss.item())
         if (self.steps % 5 == 0):
-            self.track(self.d_loss, 'D') 
+            self.track(self.d_loss, 'D')
+            self.track(patch_loss_to_track, 'DPatch')
 
         self.D_scaler.step(self.GAN.D_opt)
         self.D_scaler.update()
@@ -1349,9 +1356,8 @@ class Trainer():
                         fake_output_loss_2, _ = fake_output_loss_2.topk(
                             k=k, largest=False)
 
-                # loss = G_loss_fn(fake_output_loss, real_output)
-                loss = get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1,
-                                        fake_output_2, real_output_2, vgg_model, face_id_model, d_patch, mtcnn_crop_size)
+                loss, rec_loss_1, rec_loss_2, patch_loss = get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1,
+                                                                            fake_output_2, real_output_2, vgg_model, face_id_model, d_patch, mtcnn_crop_size)
                 gen_loss = loss
 
             if apply_path_penalty:
@@ -1393,10 +1399,22 @@ class Trainer():
 
             #TODO: check this with original Stylegan2 code: divide inside vs divide outlis
             total_gen_loss = total_gen_loss + torch.div(loss.detach(), self.gradient_accumulate_every)
+            rec_loss_1 = rec_loss_1 + \
+                torch.div(rec_loss_1.detach(),
+                          self.gradient_accumulate_every)
+            rec_loss_2 = rec_loss_2 + \
+                torch.div(rec_loss_2.detach(),
+                          self.gradient_accumulate_every)
+            patch_loss = patch_loss + \
+                torch.div(patch_loss.detach(),
+                          self.gradient_accumulate_every)
 
         self.g_loss = float(total_gen_loss.item())
         if (self.steps % 5 == 0):
             self.track(self.g_loss, 'G')
+            self.track(rec_loss_1, 'RecLoss1')
+            self.track(rec_loss_2, 'RecLoss2')
+            self.track(patch_loss, 'GPatch')
 
         self.G_scaler.step(self.GAN.G_opt)
         self.G_scaler.update()
@@ -1405,10 +1423,10 @@ class Trainer():
         #Moved to inside if block as for gradient_penalty
         # # calculate moving averages
 
-        # if apply_path_penalty and not torch.isnan(avg_pl_length):
-        #     self.pl_mean = self.pl_length_ma.update_average(
-        #         self.pl_mean, avg_pl_length)
-        #     self.track(self.pl_mean, 'PL')
+        if apply_path_penalty and not torch.isnan(avg_pl_length):
+            self.pl_mean = self.pl_length_ma.update_average(
+                self.pl_mean, avg_pl_length)
+            self.track(self.pl_mean, 'PL')
 
         if self.is_main and self.steps % 10 == 0 and self.steps > 20000:
             self.GAN.EMA()
@@ -1428,6 +1446,7 @@ class Trainer():
 
         if self.is_main:
             if self.steps % self.save_every == 0:
+                print("Saving checkpoint")
                 self.save(self.checkpoint_num)
 
             if self.steps % self.evaluate_every == 0 or (self.steps % 125 == 0 and self.steps < 2500):
@@ -1458,9 +1477,11 @@ class Trainer():
         image_size = self.GAN.G.image_size
         num_layers = self.GAN.G.num_layers
 
-
         # Get batch inputs
-        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
+        batch = next(self.loader)
+        # show_batch(batch)
+
+        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = batch
         I_s = I_s.cuda(self.rank)
         S_pose_map = S_pose_map.cuda(self.rank)
         S_texture_map = S_texture_map.cuda(self.rank)
@@ -1470,27 +1491,33 @@ class Trainer():
         batch_size = I_t.shape[0]
 
         # Get encodings
+        E_s = self.GAN.p_net(S_pose_map)
         E_t = self.GAN.p_net(T_pose_map)
         z_s = self.GAN.a_net(S_texture_map).expand(-1, num_layers, -1)
 
         noise = image_noise(batch_size, image_size, device=self.rank)
 
         # regular
+        size = min(8, batch_size)
+        generated_images = self.generate_truncated(self.GAN.G, z_s, noise, E_s)
+        generated_stack = torch.cat(
+            (I_s[:size], I_t[:size], generated_images[:size]), dim=0)
+       
+        save_path = str(self.results_dir / self.name / f'{str(num)}.{ext}')
+        torchvision.utils.save_image(generated_stack, save_path, nrow=size)
 
-        generated_images = self.generate_truncated(self.GAN.G, z_s, noise, E_t)
-        torchvision.utils.save_image(generated_images, str(
-            self.results_dir / self.name / f'{str(num)}.{ext}'), nrow=batch_size)
-
-        images = wandb.Image(generated_images, caption="Generations Regular")
+        images = wandb.Image(save_path, caption="Generations Regular")
         self.track(images, "generations_regular")
 
         # moving averages
 
-        generated_images = self.generate_truncated(self.GAN.GE, z_s, noise, E_t)
-        torchvision.utils.save_image(generated_images, str(
-            self.results_dir / self.name / f'{str(num)}-ema.{ext}'), nrow=batch_size)
+        generated_images = self.generate_truncated(self.GAN.GE, z_s, noise, E_s)
+        generated_stack = torch.cat(
+            (I_s[:size], I_t[:size], generated_images[:size]), dim=0)
+        save_path = str(self.results_dir / self.name / f'{str(num)}-ema.{ext}')
+        torchvision.utils.save_image(generated_stack, save_path, nrow=size)
 
-        images = wandb.Image(generated_images, caption="Generations EMA")
+        images = wandb.Image(save_path, caption="Generations EMA")
         self.track(images, "generations_ema")
 
         """
@@ -1681,6 +1708,15 @@ class Trainer():
         self.init_folders()
 
     def save(self, num):
+        #Handling logic to ensure that we dont have vgg and face_id being saved
+        if hasattr(self.GAN, 'vgg'):
+            print("Had vgg in GAN, deleting ")
+            del self.GAN.vgg
+        if hasattr(self.GAN, 'face_id'):
+            print("Had face id in GAN, deleting ")
+            del self.GAN.face_id
+
+
         save_data = {
             'GAN': self.GAN.state_dict(),
             'G_opt': self.GAN.G_opt.state_dict(),
@@ -1741,6 +1777,8 @@ class Trainer():
             
             print(f"Loaded the above from checkpoint file: model_{name}.pt")
             print("---- Finished loading from checkpoint -----")
+            self.vgg_model = VGG16Perceptual(requires_grad=False).eval().cuda(self.rank)
+            self.face_id_model = FaceIDLoss(self.mtcnn_crop_size, requires_grad=False, rank=self.rank).eval().cuda(self.rank)
 
         except Exception as e:
             print('Unable to load save model. please try downgrading the package to the version specified by the saved model')
