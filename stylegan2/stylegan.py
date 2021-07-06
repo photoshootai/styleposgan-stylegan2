@@ -1169,10 +1169,8 @@ class Trainer():
 
             noise = image_noise(batch_size, image_size, device=self.rank)
 
-            batch = next(self.loader)
-            show_batch(batch)
             # Get batch inputs
-            (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = batch
+            (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
             I_s = I_s.cuda(self.rank)
             S_pose_map = S_pose_map.cuda(self.rank)
             S_texture_map = S_texture_map.cuda(self.rank)
