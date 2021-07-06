@@ -1096,9 +1096,10 @@ class Trainer():
 
         if overfit:
             print("Overfitting to a single batch")
-            only_batch = [next(self.loader)]
-            print("Only Batch: ", len(only_batch))
-            only_batch_loader = cycle(only_batch)
+            only_batch = next(self.loader)
+            only_batch_list = [only_batch]*8 #Hard constant
+            print("Only Batch: ", len(only_batch_list))
+            only_batch_loader = cycle(only_batch_list)
             self.loader = only_batch_loader
 
         # auto set augmentation prob for user if dataset is detected to be low
@@ -1169,7 +1170,7 @@ class Trainer():
             noise = image_noise(batch_size, image_size, device=self.rank)
 
             batch = next(self.loader)
-            # show_batch(batch)
+            show_batch(batch)
             # Get batch inputs
             (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = batch
             I_s = I_s.cuda(self.rank)
