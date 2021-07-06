@@ -46,9 +46,9 @@ def check_pose_and_texture_maps_exist_for_source_images(source_data_path, textur
     
 
 def main():
-    source_images_data_path = "./data/DeepFashionWomenOnly/SourceImages"
-    texture_map_data_path = "./data/DeepFashionWomenOnly/PoseMaps"
-    pose_map_data_path = "./data/DeepFashionWomenOnly/TextureMaps"
+    source_images_data_path = "./data/DeepFashionFaceOverfit/SourceImages"
+    texture_map_data_path = "./data/DeepFashionFaceOverfit/PoseMaps"
+    pose_map_data_path = "./data/DeepFashionFaceOverfit/TextureMaps"
     get_men_women_dist(source_images_data_path)
     check_pose_and_texture_maps_exist_for_source_images(source_images_data_path, texture_map_data_path, pose_map_data_path)
     return 

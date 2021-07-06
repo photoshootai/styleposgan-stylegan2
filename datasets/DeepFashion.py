@@ -169,6 +169,7 @@ class DeepFashionDataset(Dataset):
             # print(extract_prop(file_names[i], props={'sex', 'clothing_category', 'model', 'clothing_id'}))
         # exit()
         if os.path.isfile(pair_pickle):
+            print("Loading pair annotations from pickle: ", pair_pickle)
             with open(pair_pickle, 'rb') as f:
                 data = pickle.load(f)
                 # print(type(data[0]))

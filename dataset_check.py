@@ -28,7 +28,7 @@ def show_batch(batch):
         im = transforms.ToPILImage()(P_t[i]).convert("RGB")
         # im.show("Target Pose Map")
 
-        # input("Press Enter to continue...")
+    input("Press Enter to continue...")
 
 
 def main():

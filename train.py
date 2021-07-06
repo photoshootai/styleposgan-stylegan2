@@ -35,7 +35,7 @@ def set_seed(seed):
     random.seed(seed)
 
 
-def run_training(rank, world_size, model_args, data, load_from, new, num_train_steps, name, seed, wandb_logger):
+def run_training(rank, world_size, model_args, data, load_from, new, num_train_steps, name, seed, wandb_logger, overfit):
     is_main = rank == 0
     is_ddp = world_size > 1
 
@@ -60,7 +60,7 @@ def run_training(rank, world_size, model_args, data, load_from, new, num_train_s
     else:
         model.clear()
 
-    model.set_data_src(data)
+    model.set_data_src(data, overfit)
 
     for _ in tqdm(range(num_train_steps - model.steps), initial=model.steps, total=num_train_steps, mininterval=10., desc=f'{name}<{data}>'):
         retry_call(model.train, tries=3, exceptions=NanException)
@@ -121,7 +121,8 @@ def train_from_folder(
     calculate_fid_num_images=12800,
     clear_fid_cache=False,
     seed=42,
-    log=False
+    log=False, 
+    overfit=False
 ):
     model_args = dict(
         name=name,
@@ -190,13 +191,13 @@ def train_from_folder(
 
     if world_size == 1 or not multi_gpus:
         run_training(0, 1, model_args, data, load_from,
-                     new, num_train_steps, name, seed, wandb_logger)
+                     new, num_train_steps, name, seed, wandb_logger, overfit)
         return
 
     print("Running Multi-GPUs")
     mp.spawn(run_training,
              args=(world_size, model_args, data, load_from,
-                   new, num_train_steps, name, seed, wandb_logger),
+                   new, num_train_steps, name, seed, wandb_logger, overfit),
              nprocs=world_size,
              join=True)
 

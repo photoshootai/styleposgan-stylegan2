@@ -1,3 +1,4 @@
+from dataset_check import show_batch
 import os
 import math
 import json
@@ -1080,7 +1081,8 @@ class Trainer():
     def config(self):
         return {'image_size': self.image_size, 'network_capacity': self.network_capacity, 'lr_mlp': self.lr_mlp, 'transparent': self.transparent, 'fq_layers': self.fq_layers, 'fq_dict_size': self.fq_dict_size, 'attn_layers': self.attn_layers, 'no_const': self.no_const}
 
-    def set_data_src(self, folder):
+    def set_data_src(self, folder, overfit):
+
         self.dataset = DeepFashionDataset(
             folder, self.image_size, transparent=self.transparent, aug_prob=self.dataset_aug_prob)
         num_workers = num_workers = default(
@@ -1089,7 +1091,15 @@ class Trainer():
             self.dataset, rank=self.rank, num_replicas=self.world_size, shuffle=True) if self.is_ddp else None
         dataloader = data.DataLoader(self.dataset, num_workers=num_workers, batch_size=math.ceil(
             self.batch_size / self.world_size), sampler=sampler, shuffle=not self.is_ddp, drop_last=True, pin_memory=True)
+        
         self.loader = cycle(dataloader)
+
+        if overfit:
+            print("Overfitting to a single batch")
+            only_batch = [next(self.loader)]
+            print("Only Batch: ", len(only_batch))
+            only_batch_loader = cycle(only_batch)
+            self.loader = only_batch_loader
 
         # auto set augmentation prob for user if dataset is detected to be low
         num_samples = len(self.dataset)
@@ -1158,8 +1168,10 @@ class Trainer():
 
             noise = image_noise(batch_size, image_size, device=self.rank)
 
+            batch = next(self.loader)
+            show_batch(batch)
             # Get batch inputs
-            (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
+            (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = batch
             I_s = I_s.cuda(self.rank)
             S_pose_map = S_pose_map.cuda(self.rank)
             S_texture_map = S_texture_map.cuda(self.rank)
