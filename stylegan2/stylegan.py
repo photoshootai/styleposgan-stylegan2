@@ -644,7 +644,7 @@ class Generator(nn.Module):
         # print("Z_inputs are: ", z_inputs.size())
         z_inputs = z_inputs.transpose(0, 1)  # Change (x, y, z) to (y, x, z)
 
-        #print("Initial Conv Dims is: " + str(self.initial_conv))
+       #print("Initial Conv Dims is: " + str(self.initial_conv))
         x = self.initial_conv(x)
         #print("X dim after convolution is: " + str(x.size()))
 
@@ -1177,13 +1177,20 @@ class Trainer():
             I_t = I_t.cuda(self.rank)
             T_pose_map = T_pose_map.cuda(self.rank)
 
+
+
             # Get encodings
             E_s = p_net(S_pose_map)
             E_t = p_net(T_pose_map)
-            z_s = a_net(S_texture_map).expand(-1, num_layers, -1)
+            z_s = a_net(S_texture_map)
 
+
+            z_s_def = [(z_s, num_layers)]
+            z_s_styles = styles_def_to_tensor(z_s_def)
+            
+        
             # Generate I_dash_s
-            I_dash_s = G(z_s, noise, E_s)  # I_dash_s
+            I_dash_s = G(z_s_styles, noise, E_s)  # I_dash_s
             fake_output_1, fake_q_loss_1 = D_aug(
                 I_dash_s.clone().detach(), detach=True, **aug_kwargs)
 
@@ -1194,7 +1201,7 @@ class Trainer():
             fake_output_loss_1 = fake_output_1
 
             # Generate I_dash_to_t
-            I_dash_s_to_t = G(z_s, noise, E_t)
+            I_dash_s_to_t = G(z_s_styles, noise, E_t)
             fake_output_2, fake_q_loss_2 = D_aug(
                 I_dash_s_to_t.clone().detach(), detach=True, **aug_kwargs)
 
@@ -1277,15 +1284,19 @@ class Trainer():
             # Get encodings
             E_s = p_net(S_pose_map)
             E_t = p_net(T_pose_map)
-            z_s = a_net(S_texture_map).expand(-1, num_layers, -1)
+            z_s = a_net(S_texture_map)
 
-            I_dash_s = G(z_s, noise, E_s)  # I_dash_s
+
+            z_s_def = [(z_s, num_layers)]
+            z_s_styles = styles_def_to_tensor(z_s_def)
+
+            I_dash_s = G(z_s_styles, noise, E_s)  # I_dash_s
             fake_output_1, _ = D_aug(I_dash_s, **aug_kwargs)
             fake_output_loss_1 = fake_output_1
 
             real_output_1 = None
 
-            I_dash_s_to_t = G(z_s, noise, E_t)  # I_dash_s
+            I_dash_s_to_t = G(z_s_styles, noise, E_t)  # I_dash_s
             fake_output_2, _ = D_aug(I_dash_s_to_t, **aug_kwargs)
             fake_output_loss_2 = fake_output_2
 
@@ -1436,7 +1447,10 @@ class Trainer():
         # Get encodings
         E_s = self.GAN.p_net(S_pose_map)
         E_t = self.GAN.p_net(T_pose_map)
-        z_s = self.GAN.a_net(S_texture_map).expand(-1, num_layers, -1)
+        z_s = self.GAN.a_net(S_texture_map)
+
+        z_s_def = [(z_s, num_layers)]
+        z_s_styles = styles_def_to_tensor(z_s_def)
 
         noise = image_noise(batch_size, image_size, device=self.rank)
 
@@ -1446,7 +1460,7 @@ class Trainer():
 
         # regular
         size = min(batch_size, batch_size)
-        generated_images = self.generate_truncated(self.GAN.G, z_s, noise, E_s)
+        generated_images = self.generate_truncated(self.GAN.G, z_s_styles, noise, E_s)
         generated_stack = torch.cat(
             (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images[:size]), dim=0)
        
@@ -1458,7 +1472,7 @@ class Trainer():
 
         # moving averages
 
-        generated_images = self.generate_truncated(self.GAN.GE, z_s, noise, E_s)
+        generated_images = self.generate_truncated(self.GAN.GE, z_s_styles, noise, E_s)
         generated_stack = torch.cat(
             (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images[:size]), dim=0)
         save_path = str(self.results_dir / self.name / f'{str(num)}-ema.{ext}')
