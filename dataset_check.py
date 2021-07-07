@@ -1,5 +1,6 @@
 import torch
-from torchvision import transforms
+import torchvision
+
 import PIL
 
 from datasets import DeepFashionDataset
@@ -7,26 +8,34 @@ from torch.utils.data import DataLoader
 
 def show_batch(batch):
     (I_s, P_s, A_s), (I_t, P_t) = batch
-    for i in range(I_s.shape[0]):
-        print(I_s[i].size())
-        im = transforms.ToPILImage()(I_s[i]).convert("RGB")
-        im.show("Source Image")
+    size = I_s.shape[0]
+    generated_stack = torch.cat(
+        (I_s, I_t, P_s, A_s, P_t), dim=0)
+    
+    save_path = str("./results/debugging.jpg")
+    torchvision.utils.save_image(generated_stack, save_path, nrow=size)
 
-        print(P_s[i].size())
-        im = transforms.ToPILImage()(P_s[i]).convert("RGB")
-        # im.show("Source Pose Map")
 
-        print(A_s[i].size())
-        im = transforms.ToPILImage()(A_s[i]).convert("RGB")
-        # im.show("Source Texture Map")
+    # for i in range(I_s.shape[0]):
+    #     print(I_s[i].size())
+    #     im = transforms.ToPILImage()(I_s[i]).convert("RGB")
+    #     im.show("Source Image")
 
-        print(I_t[i].size())
-        im = transforms.ToPILImage()(I_t[i]).convert("RGB")
-        im.show("Target Image")
+    #     print(P_s[i].size())
+    #     im = transforms.ToPILImage()(P_s[i]).convert("RGB")
+    #     # im.show("Source Pose Map")
 
-        print(P_t[i].size())
-        im = transforms.ToPILImage()(P_t[i]).convert("RGB")
-        # im.show("Target Pose Map")
+    #     print(A_s[i].size())
+    #     im = transforms.ToPILImage()(A_s[i]).convert("RGB")
+    #     # im.show("Source Texture Map")
+
+    #     print(I_t[i].size())
+    #     im = transforms.ToPILImage()(I_t[i]).convert("RGB")
+    #     im.show("Target Image")
+
+    #     print(P_t[i].size())
+    #     im = transforms.ToPILImage()(P_t[i]).convert("RGB")
+    #     # im.show("Target Pose Map")
 
     input("Press Enter to continue...")
 
