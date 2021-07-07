@@ -1182,10 +1182,10 @@ class Trainer():
             # Get encodings
             E_s = p_net(S_pose_map)
             E_t = p_net(T_pose_map)
-            z_s = a_net(S_texture_map)
+            z_s_1d = a_net(S_texture_map)
 
 
-            z_s_def = [(z_s, num_layers)]
+            z_s_def = [(z_s_1d, num_layers)]
             z_s_styles = styles_def_to_tensor(z_s_def)
             
         
@@ -1284,10 +1284,10 @@ class Trainer():
             # Get encodings
             E_s = p_net(S_pose_map)
             E_t = p_net(T_pose_map)
-            z_s = a_net(S_texture_map)
+            z_s_1d = a_net(S_texture_map)
 
 
-            z_s_def = [(z_s, num_layers)]
+            z_s_def = [(z_s_1d, num_layers)]
             z_s_styles = styles_def_to_tensor(z_s_def)
 
             I_dash_s = G(z_s_styles, noise, E_s)  # I_dash_s
@@ -1333,7 +1333,7 @@ class Trainer():
 
             if apply_path_penalty:
                 #w.r.t I_dash_s
-                pl_lengths = calc_pl_lengths(z_s, I_dash_s)
+                pl_lengths = calc_pl_lengths(z_s_styles, I_dash_s)
                 avg_pl_length = torch.mean(pl_lengths.detach())
 
                 if not is_empty(self.pl_mean):
@@ -1342,7 +1342,7 @@ class Trainer():
                         gen_loss = gen_loss + pl_loss
 
                 #w.r.t I_dash_to_t
-                pl_lengths = calc_pl_lengths(z_s, I_dash_s_to_t)
+                pl_lengths = calc_pl_lengths(z_s_styles, I_dash_s_to_t)
                 avg_pl_length = torch.mean(pl_lengths.detach())
                 if not is_empty(self.pl_mean):
                     pl_loss2 = ((pl_lengths - self.pl_mean) ** 2).mean()
@@ -1447,9 +1447,9 @@ class Trainer():
         # Get encodings
         E_s = self.GAN.p_net(S_pose_map)
         E_t = self.GAN.p_net(T_pose_map)
-        z_s = self.GAN.a_net(S_texture_map)
+        z_s_1d = self.GAN.a_net(S_texture_map)
 
-        z_s_def = [(z_s, num_layers)]
+        z_s_def = [(z_s_1d, num_layers)]
         z_s_styles = styles_def_to_tensor(z_s_def)
 
         noise = image_noise(batch_size, image_size, device=self.rank)
@@ -1546,7 +1546,11 @@ class Trainer():
 
         # Get encodings
         E_t = self.GAN.p_net(T_pose_map)
-        z_s = self.GAN.a_net(S_texture_map).expand(-1, num_layers, -1)
+        z_s_1d = self.GAN.a_net(S_texture_map).expand(-1, num_layers, -1)
+
+        z_s_def = [(z_s_1d, num_layers)]
+        z_s_styles = styles_def_to_tensor(z_s_def)
+
 
         for batch_num in tqdm(range(num_batches), desc='calculating FID - saving generated'):
             # latents and noise
@@ -1554,7 +1558,7 @@ class Trainer():
 
             # moving averages
             generated_images = self.generate_truncated(
-                self.GAN.GE, z_s, noise, E_t)
+                self.GAN.GE, z_s_styles, noise, E_t)
 
             for j, image in enumerate(generated_images.unbind(0)):
                 torchvision.utils.save_image(image, str(
