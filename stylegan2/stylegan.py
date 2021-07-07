@@ -1445,7 +1445,7 @@ class Trainer():
         # S_texture_map = F.interpolae(S_texture_map, image_size=256)
 
         # regular
-        size = min(8, batch_size)
+        size = min(batch_size, batch_size)
         generated_images = self.generate_truncated(self.GAN.G, z_s, noise, E_s)
         generated_stack = torch.cat(
             (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images[:size]), dim=0)
