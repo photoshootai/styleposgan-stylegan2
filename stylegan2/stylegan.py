@@ -1443,10 +1443,10 @@ class Trainer():
         import torch.nn.functional as F
         S_texture_map = F.interpolate(S_texture_map, size=256)
         # S_texture_map = F.interpolae(S_texture_map, image_size=256)
-
+        
         # regular
         size = min(batch_size, batch_size)
-        generated_images = self.generate_truncated(self.GAN.G, z_s, noise, E_s)
+        generated_images = self.GAN.G(z_s, noise, E_s) #self.generate_truncated(self.GAN.G, z_s, noise, E_s)
         generated_stack = torch.cat(
             (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images[:size]), dim=0)
        
@@ -1458,7 +1458,7 @@ class Trainer():
 
         # moving averages
 
-        generated_images = self.generate_truncated(self.GAN.GE, z_s, noise, E_s)
+        generated_images = generated_images = self.GAN.GE(z_s, noise, E_s)#self.generate_truncated(self.GAN.GE, z_s, noise, E_s)
         generated_stack = torch.cat(
             (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images[:size]), dim=0)
         save_path = str(self.results_dir / self.name / f'{str(num)}-ema.{ext}')
