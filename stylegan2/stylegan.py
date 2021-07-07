@@ -1440,27 +1440,31 @@ class Trainer():
 
         noise = image_noise(batch_size, image_size, device=self.rank)
 
+        import torch.nn.functional as F
+        S_texture_map = F.interpolate(S_texture_map, size=256)
+        # S_texture_map = F.interpolae(S_texture_map, image_size=256)
+
         # regular
         size = min(8, batch_size)
         generated_images = self.generate_truncated(self.GAN.G, z_s, noise, E_s)
         generated_stack = torch.cat(
-            (I_s[:size], I_t[:size], generated_images[:size]), dim=0)
+            (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images[:size]), dim=0)
        
         save_path = str(self.results_dir / self.name / f'{str(num)}.{ext}')
         torchvision.utils.save_image(generated_stack, save_path, nrow=size)
 
-        images = wandb.Image(save_path, caption="Generations Regular")
+        images = wandb.Image(save_path, caption="Generations Regular I_dash_s")
         self.track(images, "generations_regular")
 
         # moving averages
 
         generated_images = self.generate_truncated(self.GAN.GE, z_s, noise, E_s)
         generated_stack = torch.cat(
-            (I_s[:size], I_t[:size], generated_images[:size]), dim=0)
+            (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images[:size]), dim=0)
         save_path = str(self.results_dir / self.name / f'{str(num)}-ema.{ext}')
         torchvision.utils.save_image(generated_stack, save_path, nrow=size)
 
-        images = wandb.Image(save_path, caption="Generations EMA")
+        images = wandb.Image(save_path, caption="Generations EMA I_dash_s_to_t")
         self.track(images, "generations_ema")
 
         """
