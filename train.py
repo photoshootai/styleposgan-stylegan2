@@ -63,7 +63,7 @@ def run_training(rank, world_size, model_args, data, load_from, new, num_train_s
     model.set_data_src(data, overfit)
 
     for _ in tqdm(range(num_train_steps - model.steps), initial=model.steps, total=num_train_steps, mininterval=10., desc=f'{name}<{data}>'):
-        retry_call(model.train, tries=3, exceptions=NanException)
+        retry_call(model.train_debug, tries=3, exceptions=NanException)
         if is_main and _ % 50 == 0:
             model.print_log()
 

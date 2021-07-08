@@ -1109,7 +1109,43 @@ class Trainer():
             print(
                 f'autosetting augmentation probability to {round(self.aug_prob * 100)}%')
 
+    def train_debug(self):
+        print("******RUNNNING DEBUG TRAIN FUNCTION*****************")
+        assert exists(self.loader), 'You must first initialize the data source with `.set_data_src(<folder of images>)`'
+
+        if not exists(self.GAN):  # PNet ANet initializations coupled with self.GAN
+            self.init_GAN()
+
+        self.GAN.train()
+        total_disc_loss = torch.tensor(0.).cuda(self.rank)
+        total_gen_loss = torch.tensor(0.).cuda(self.rank)
+
+
+        batch_size = math.ceil(self.batch_size / self.world_size)
+        print("Batch Size is ", batch_size)
+
+        image_size = self.GAN.G.image_size
+        latent_dim = self.GAN.G.latent_dim
+        num_layers = self.GAN.G.num_layers
+
+        # d_batch = next(self.loader)
+        # show_batch(d_batch)
+
+        # g_batch = next(self.loader)
+        # show_batch(g_batch)
+
+        z_s = torch.cat([torch.full((1, 1, 2048), i) for i in range(8)], dim=0)
+        z_s = z_s.expand(-1, num_layers, -1)
+
+
+
+        input("Press Enter to go to next train step")
+
+
+
+
     def train(self):
+
         assert exists(
             self.loader), 'You must first initialize the data source with `.set_data_src(<folder of images>)`'
 
