@@ -184,7 +184,6 @@ class DeepFashionDataset(Dataset):
         self.data_len = len(self.data)
         print(f'there are {self.data_len} pairs in this dataset')
         assert self.data_len > 0, 'Empty dataset'
-        exit()
 
         # self.to_rgb = convert_transparent_to_rgb if transparent else lambda x: x
         # self.expand_greyscale = expand_greyscale(transparent)
