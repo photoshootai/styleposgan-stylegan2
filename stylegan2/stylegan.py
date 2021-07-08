@@ -1528,9 +1528,10 @@ class Trainer():
         
         # regular
         size = min(batch_size, batch_size)
-        generated_images = self.GAN.G(z_s_styles, noise, E_s)
+        generated_images_s = self.GAN.G(z_s_styles, noise, E_s)
+        generated_images_t = self.GAN.G(z_s_styles, noise, E_t)
         generated_stack = torch.cat(
-            (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images[:size]), dim=0)
+            (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images_s[:size], generated_images_t[:size]), dim=0)
        
         save_path = str(self.results_dir / self.name / f'{str(num)}.{ext}')
         torchvision.utils.save_image(generated_stack, save_path, nrow=size)
@@ -1540,9 +1541,11 @@ class Trainer():
 
         # moving averages
 
-        generated_images = self.GAN.GE(z_s_styles, noise, E_s)
+        generated_images_s = self.GAN.GE(z_s_styles, noise, E_s)
+        generated_images_t = self.GAN.GE(z_s_styles, noise, E_t)
+
         generated_stack = torch.cat(
-            (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images[:size]), dim=0)
+            (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images_s[:size], generated_images_t[:size]), dim=0)
         save_path = str(self.results_dir / self.name / f'{str(num)}-ema.{ext}')
         torchvision.utils.save_image(generated_stack, save_path, nrow=size)
 
