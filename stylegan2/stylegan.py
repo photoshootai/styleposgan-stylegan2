@@ -1305,7 +1305,7 @@ class Trainer():
             fake_output_1, fake_q_loss_1 = D_aug(
                 I_dash_s.clone().detach(), detach=True, **aug_kwargs)
 
-            I_s.requires_grad_()  # keep
+            I_s.requires_grad_(requires_grad=False)  # keep
             real_output_1, real_q_loss_1 = D_aug(I_s, **aug_kwargs)
 
             real_output_loss_1 = real_output_1
@@ -1316,7 +1316,7 @@ class Trainer():
             fake_output_2, fake_q_loss_2 = D_aug(
                 I_dash_s_to_t.clone().detach(), detach=True, **aug_kwargs)
 
-            I_t.requires_grad_()
+            I_t.requires_grad_(requires_grad=False)
             # opt params are for self.D instead os self.D_aug
             real_output_2, real_q_loss_2 = D_aug(I_t, **aug_kwargs)
 
@@ -1330,16 +1330,12 @@ class Trainer():
             disc_loss = divergence
 
             if apply_gradient_penalty:
-                gp = gradient_penalty(I_s, real_output_1)
-                self.last_gp_loss = gp.clone().detach().item()  # remove item
-                self.track(self.last_gp_loss, 'GP')
-                disc_loss = disc_loss + gp
+                gp1 = gradient_penalty(I_s, real_output_1)
+                gp2 = gradient_penalty(I_t, real_output_2)
 
-            if apply_gradient_penalty:
-                gp = gradient_penalty(I_t, real_output_2)
-                self.last_gp_loss = gp.clone().detach().item()
+                self.last_gp_loss = gp1.clone().detach().item() + gp1.clone().detach().item()  # remove item
                 self.track(self.last_gp_loss, 'GP')
-                disc_loss = disc_loss + gp
+                disc_loss = disc_loss + gp1 + gp2
 
             disc_loss = disc_loss / self.gradient_accumulate_every
             disc_loss.register_hook(raise_if_nan)
@@ -1399,24 +1395,17 @@ class Trainer():
                                                                         fake_output_2, real_output_2, vgg_model, face_id_model, d_patch, mtcnn_crop_size)
             gen_loss = loss
 
-            # if apply_path_penalty:
-            #     #w.r.t I_dash_s
-            #     pl_lengths = calc_pl_lengths(z_s_styles, I_dash_s)
-            #     avg_pl_length = torch.mean(pl_lengths.detach())
+            if apply_path_penalty:
+                #TODO: Check whether adding path length is correct
+                pl_lengths = calc_pl_lengths(z_s_styles, I_dash_s) + calc_pl_lengths(z_s_styles, I_dash_s_to_t)
+                avg_pl_length = torch.mean(pl_lengths.detach())
 
-            #     if not is_empty(self.pl_mean):
-            #         pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
-            #         if not torch.isnan(pl_loss):
-            #             gen_loss = gen_loss + pl_loss
+                if not is_empty(self.pl_mean):
+                    pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
+                    if not torch.isnan(pl_loss):
+                        gen_loss = gen_loss + pl_loss
 
-            #     #w.r.t I_dash_to_t
-            #     pl_lengths = calc_pl_lengths(z_s_styles, I_dash_s_to_t)
-            #     avg_pl_length = torch.mean(pl_lengths.detach())
-            #     if not is_empty(self.pl_mean):
-            #         pl_loss2 = ((pl_lengths - self.pl_mean) ** 2).mean()
-            #         if not torch.isnan(pl_loss):
-            #             gen_loss = gen_loss + pl_loss2
-
+ 
 
             gen_loss = gen_loss / self.gradient_accumulate_every
             gen_loss.register_hook(raise_if_nan)
@@ -1445,10 +1434,10 @@ class Trainer():
 
         # calculate moving averages
 
-        # if apply_path_penalty and not torch.isnan(avg_pl_length):
-        #     self.pl_mean = self.pl_length_ma.update_average(
-        #         self.pl_mean, avg_pl_length)
-        #     self.track(self.pl_mean, 'PL')
+        if apply_path_penalty and not torch.isnan(avg_pl_length):
+            self.pl_mean = self.pl_length_ma.update_average(
+                self.pl_mean, avg_pl_length)
+            self.track(self.pl_mean, 'PL')
 
         if self.is_main and self.steps % 10 == 0 and self.steps > 20000:
             self.GAN.EMA()
