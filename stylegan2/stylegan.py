@@ -736,7 +736,7 @@ class Discriminator(nn.Module):
         x = self.to_logit(x)
 
         #print("quantize_loss ", quantize_loss)
-        return x, quantize_loss  # Earlier was squeezed, we changed to x.squeeze(), quantize_loss
+        return x.squeeze(), quantize_loss  # Earlier was squeezed, we changed to x.squeeze(), quantize_loss
 
 
 class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
