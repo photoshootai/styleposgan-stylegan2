@@ -514,11 +514,11 @@ class GeneratorBlock(nn.Module):
 
         #print("Noise 1 before permutation is: ", inoise.shape)
         noise1 = self.to_noise1(inoise).permute(
-            (0, 3, 1, 2))  # was earlier ((0, 3, 2, 1))
+            (0, 3, 2, 1))  # was earlier ((0, 3, 2, 1))
         #print("Noise1 shape is " + str(noise1.size()))
 
         noise2 = self.to_noise2(inoise).permute(
-            (0, 3, 1, 2))  # was earlier ((0, 3, 2, 1))
+            (0, 3, 2, 1))  # was earlier ((0, 3, 2, 1))
 
         style1 = self.to_style1(istyle)
         x = self.conv1(x, style1)
