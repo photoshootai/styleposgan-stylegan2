@@ -95,7 +95,6 @@ class scale_and_crop(object):
 
 cat_map = {'sex': 0, 'clothing_category': 1, 'const_1': 2, 'model': 3, 'clothing_id': 4, 'idx': 5, 'pose': 6}
 
-
 def extract_prop(file_name: str, props: Set[str]={'model'}) -> Tuple[str]:
     """
     /PATH/{sex}_{clothing_category}_id_{model}_{clothing_id}_{idx}_{pose}.jpg
@@ -105,39 +104,26 @@ def extract_prop(file_name: str, props: Set[str]={'model'}) -> Tuple[str]:
     base_name = os.path.splitext(file_name)[0]
     match = re.match(r'([A-Z]+)\_(.+)\_(id)\_(\d+)\_(\d+)\_(\d+)\_(.+)', base_name)
     return tuple(compress(match.groups(), mask))
-    # return tuple(compress(os.path.splitext(file_name)[0].split('_'), mask)) # [a, b, c, d] compress with [0. 1. 1, 0] => [b, c]
-
-
-def random_shuffle(files: List[str], seed: int=42) -> Iterable[Tuple[str]]:
-    if len(files) < 2:
-        return list()
-    random.seed(seed)
-    random.shuffle(files)
-    return permutations(files, 2) # files[::-1])
 
 def filter_opt(opt, files, props):
-    return [f for f in files if opt == extract_prop(f, props)]
+    # list for multiprocessing compatibility generator preferred for single threaded
+    return list(filter(lambda f: opt == extract_prop(f, props), files))
 
-def conditional_shuffle(files: Iterable[str], props: Set[str], n_threads: int=12, seed: int=42) -> Iterable[Tuple[str]]:
+def conditional_shuffle(files: Iterable[str], props: Set[str], n_threads: int=6) -> Iterable[Tuple[str]]:
     extract = partial(extract_prop, props=props)
     opts = set(extract(f) for f in files)
-    # print(len(opts), next(iter(opts)))
     with Pool(n_threads) as P:
         groups = P.starmap(filter_opt, zip(opts, repeat(files), repeat(props)))
-        pairs = P.starmap(random_shuffle, zip(groups, repeat(seed))) #for group in groups)
-        # groups = (list(filter(lambda f: opt == extract(f), files)) for opt in opts)
-    # print(next(groups))
+        pairs = P.starmap(permutations, zip(groups, repeat(2)))
     
     pruned_pairs = (pair for pair in chain.from_iterable(pairs) if pair)
-    # print(len(list(pruned_pairs)))
-    return pruned_pairs # {x | x \in R, if x > 0}
-
+    return pruned_pairs
 
 class DeepFashionDataset(Dataset):
     def __init__(self, data_dir: str, image_size: Union[Tuple[int], int, float] = (512, 512),
                  scale_crop: bool = True, transparent: bool = False, seed: int = 42,
                  aug_prob: float = 0.0, pair_method: str = 'P_and_A',
-                 props: Union[Set[str], None] = {'clothing', 'id', 'model'}) -> None:
+                 props: Union[Set[str], None] = None) -> None:
         """
         Arguments:
             data_dir [str]: Path to data directory, should have subfolders {SourceImages, PoseMaps, TextureMaps}
@@ -163,41 +149,42 @@ class DeepFashionDataset(Dataset):
         assert all(map(os.path.isdir, self.img_dirs)), 'Some requisite image directories not found'
 
         file_names = [d.name for d in os.scandir(self.img_dirs[0])]
-        pair_pickle = f'./data/pairs_{"_".join(sorted(list(props)))}_{os.path.basename(data_dir)}.pkl'
-        # print(pair_pickle)
-        # for i in range(10):
-            # print(extract_prop(file_names[i], props={'sex', 'clothing_category', 'model', 'clothing_id'}))
-        # exit()
+
+        if not props:
+            if pair_method == 'random':
+                props = {'sex'}
+            elif pair_method == 'P':
+                props = {'model'}
+            elif pair_method == 'P_and_A':
+                props = {'model', 'clothing_id'}
+            else:
+                raise Exception('Please ensure pair method is one of (\'random\' | \'P\' | \'P_and_A\')')  
+        elif props:
+            props = props
+        else:
+            raise Exception(f'Please ensure props set is valid subset of {cat_map.keys()}')
+
+        pair_pickle = f'./data/pairs_{"_".join(sorted(list(props)))}_{os.path.basename(data_dir)}.pkl'        
+
         if os.path.isfile(pair_pickle):
             print("Loading pair annotations from pickle: ", pair_pickle)
             with open(pair_pickle, 'rb') as f:
                 data = pickle.load(f)
-                # print(type(data[0]))
-                # self.data = [*chain.from_iterable(x for x in data)]
                 self.data = data
-                print(len(data))
         else:
             start = time.time()
-            if not props:
-                if pair_method == 'random':
-                    self.data = list(random_shuffle(list(file_names), seed))
-                elif pair_method == 'P':
-                    self.data = list(conditional_shuffle(file_names, props={'sex', 'model'}, seed=seed))
-                elif pair_method == 'P_and_A':
-                    self.data = list(conditional_shuffle(file_names, props={'sex', 'clothing_category', 'model', 'clothing_id'}, seed=seed))
-                else:
-                    raise Exception('Please ensure pair method is one of (\'random\' | \'P\' | \'P_and_A\')')   
-            elif props:
-                self.data = list(conditional_shuffle(file_names, props=props, seed=seed))
-            else:
-                raise Exception(f'Please ensure props set is valid subset of {cat_map.keys()}')    
+            self.data = list(conditional_shuffle(file_names, props))
             with open(pair_pickle, 'wb') as f:
                 pickle.dump(self.data, f)
             print(f'Took {(time.time() - start):.4f} seconds to make pairs')
 
+        # Shuffle pairs based on seed
+        random.seed(seed)
+        random.shuffle(self.data)
         self.data_len = len(self.data)
         print(f'there are {self.data_len} pairs in this dataset')
         assert self.data_len > 0, 'Empty dataset'
+        exit()
 
         # self.to_rgb = convert_transparent_to_rgb if transparent else lambda x: x
         # self.expand_greyscale = expand_greyscale(transparent)
