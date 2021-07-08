@@ -46,6 +46,8 @@ from models import ANet, PNet
 
 from losses import VGG16Perceptual, FaceIDLoss
 
+import torch.nn.functional as F
+
 # torch.autograd.set_detect_anomaly(True)
 import wandb
 try:
@@ -371,9 +373,9 @@ class AugWrapper(nn.Module):
         self.D = D
 
     def forward(self, images, prob=0., types=[], detach=False):
-        if random() < prob:
-            images = random_hflip(images, prob=0.5)
-            images = DiffAugment(images, types=types)
+        # if random() < prob:
+        #     images = random_hflip(images, prob=0.5)
+        #     images = DiffAugment(images, types=types)
 
         if detach:
             images = images.detach()
@@ -1128,14 +1130,97 @@ class Trainer():
         latent_dim = self.GAN.G.latent_dim
         num_layers = self.GAN.G.num_layers
 
-        # d_batch = next(self.loader)
+
+
+
+        """Train Discriminator"""
+        d_batch = next(self.loader)
         # show_batch(d_batch)
+        # Get batch inputs
+        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = d_batch
+        I_s = I_s.cuda(self.rank)
+        S_pose_map = S_pose_map.cuda(self.rank)
+        S_texture_map = S_texture_map.cuda(self.rank)
+        I_t = I_t.cuda(self.rank)
+        T_pose_map = T_pose_map.cuda(self.rank)
+        noise = image_noise(batch_size, image_size, device=self.rank)
+
+        # Get encodings
+        E_s = self.GAN.p_net(S_pose_map)
+        E_t = self.GAN.p_net(T_pose_map)
+        z_s_1d = self.GAN.a_net(S_texture_map)
+        z_s = torch.cat([torch.full((1, 1, 2048), i) for i in range(8)], dim=0)
+        z_s = z_s.expand(-1, num_layers, -1)
+
+
+        #I_dash_s
+        ##G is perfect:
+        self.GAN.G.forward = lambda z, n, e: I_s
+        
+        I_dash_s = self.GAN.G(z_s, noise, E_s)
+
+
+
+
+
+
+        """Train Generator"""
+        g_batch = next(self.loader)
+        # show_batch(g_batch)
+        # Get batch inputs
+        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = g_batch
+        I_s = I_s.cuda(self.rank)
+        S_pose_map = S_pose_map.cuda(self.rank)
+        S_texture_map = S_texture_map.cuda(self.rank)
+        I_t = I_t.cuda(self.rank)
+        T_pose_map = T_pose_map.cuda(self.rank)
+
+
+        self.GAN.G.forward = lambda z, n, e: I_t
+
 
         # g_batch = next(self.loader)
         # show_batch(g_batch)
 
-        z_s = torch.cat([torch.full((1, 1, 2048), i) for i in range(8)], dim=0)
-        z_s = z_s.expand(-1, num_layers, -1)
+
+        """Evaluate"""
+         # regular
+
+        # Get batch inputs
+        batch = next(self.loader)
+        # show_batch(batch)
+
+        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = batch
+        I_s = I_s.cuda(self.rank)
+        S_pose_map = S_pose_map.cuda(self.rank)
+        S_texture_map = S_texture_map.cuda(self.rank)
+        I_t = I_t.cuda(self.rank)
+        T_pose_map = T_pose_map.cuda(self.rank)
+
+        batch_size = I_t.shape[0]
+
+        # Get encodings
+        E_s = self.GAN.p_net(S_pose_map)
+        E_t = self.GAN.p_net(T_pose_map)
+        z_s_1d = self.GAN.a_net(S_texture_map)
+
+        z_s_def = [(z_s_1d, num_layers)]
+        z_s_styles = styles_def_to_tensor(z_s_def)
+
+        noise = image_noise(batch_size, image_size, device=self.rank)
+
+
+        S_texture_map = F.interpolate(S_texture_map, size=256)
+       
+        size = min(batch_size, batch_size)
+        generated_images = self.GAN.G(z_s_styles, noise, E_s)
+        generated_stack = torch.cat(
+            (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images[:size]), dim=0)
+       
+        save_path = str(self.results_dir / self.name / f'{str("test")}.jpg')
+        torchvision.utils.save_image(generated_stack, save_path, nrow=size)
+
+        
 
 
 
@@ -1145,7 +1230,8 @@ class Trainer():
 
 
     def train(self):
-
+        if self.steps == 0:
+            print("******TRAINING WITH REAL TRAINING LOOP *******")
         assert exists(
             self.loader), 'You must first initialize the data source with `.set_data_src(<folder of images>)`'
 
@@ -1184,17 +1270,6 @@ class Trainer():
         mtcnn_crop_size = self.face_id_model.mtcnn_crop_size
 
         backwards = partial(loss_backwards, self.fp16)
-
-        # setup losses
-
-        if not self.dual_contrast_loss:
-            D_loss_fn = hinge_loss
-            G_loss_fn = gen_hinge_loss
-            G_requires_reals = False
-        else:
-            D_loss_fn = dual_contrastive_loss
-            G_loss_fn = dual_contrastive_loss
-            G_requires_reals = True
 
         # train discriminator
 
@@ -1248,36 +1323,17 @@ class Trainer():
             real_output_loss_2 = real_output_2
             fake_output_loss_2 = fake_output_2
 
-            if self.rel_disc_loss:
-                real_output_loss_1 = real_output_loss_1 - \
-                    fake_output_1.mean()  # does this need brackets?
-                fake_output_loss_1 = fake_output_loss_1 - real_output_1.mean()
-
-                real_output_loss_2 = real_output_loss_2 - fake_output_2.mean()
-                fake_output_loss_2 = fake_output_loss_2 - real_output_2.mean()
 
             # divergence = D_loss_fn(real_output_loss, fake_output_loss)
             divergence, patch_loss_to_track = get_d_total_loss(I_t, I_dash_s_to_t, real_output_loss_1,
                                                                fake_output_loss_1, real_output_loss_2, fake_output_loss_2, d_patch)
             disc_loss = divergence
 
-            if self.has_fq:
-                quantize_loss = (fake_q_loss_1 + real_q_loss_1).mean()
-                self.q_loss = float(quantize_loss.detach().item())
-
-                disc_loss = disc_loss + quantize_loss
-
             if apply_gradient_penalty:
                 gp = gradient_penalty(I_s, real_output_1)
                 self.last_gp_loss = gp.clone().detach().item()  # remove item
                 self.track(self.last_gp_loss, 'GP')
                 disc_loss = disc_loss + gp
-
-            if self.has_fq:
-                quantize_loss = (fake_q_loss_2 + real_q_loss_2).mean()
-                self.q_loss = float(quantize_loss.detach().item())
-
-                disc_loss = disc_loss + quantize_loss
 
             if apply_gradient_penalty:
                 gp = gradient_penalty(I_t, real_output_2)
@@ -1338,52 +1394,28 @@ class Trainer():
 
             real_output_2 = None
 
-            if G_requires_reals:
-                image_batch_I_s = I_s
-                real_output_1, _ = D_aug(
-                    image_batch_I_s, detach=True, **aug_kwargs)
-                real_output_1 = real_output_1.detach()
-
-                image_batch_I_t = I_t
-                real_output_2, _ = D_aug(
-                    image_batch_I_t, detach=True, **aug_kwargs)
-                real_output_2 = real_output_2.detach()
-
-            if self.top_k_training:
-                epochs = (self.steps * batch_size *
-                          self.gradient_accumulate_every) / len(self.dataset)
-                k_frac = max(self.generator_top_k_gamma **
-                             epochs, self.generator_top_k_frac)
-                k = math.ceil(batch_size * k_frac)
-
-                if k != batch_size:
-                    fake_output_loss_1, _ = fake_output_loss_1.topk(
-                        k=k, largest=False)
-                    fake_output_loss_2, _ = fake_output_loss_2.topk(
-                        k=k, largest=False)
-
             # loss = G_loss_fn(fake_output_loss, real_output)
             loss, rec_loss_1, rec_loss_2, patch_loss = get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1,
                                                                         fake_output_2, real_output_2, vgg_model, face_id_model, d_patch, mtcnn_crop_size)
             gen_loss = loss
 
-            if apply_path_penalty:
-                #w.r.t I_dash_s
-                pl_lengths = calc_pl_lengths(z_s_styles, I_dash_s)
-                avg_pl_length = torch.mean(pl_lengths.detach())
+            # if apply_path_penalty:
+            #     #w.r.t I_dash_s
+            #     pl_lengths = calc_pl_lengths(z_s_styles, I_dash_s)
+            #     avg_pl_length = torch.mean(pl_lengths.detach())
 
-                if not is_empty(self.pl_mean):
-                    pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
-                    if not torch.isnan(pl_loss):
-                        gen_loss = gen_loss + pl_loss
+            #     if not is_empty(self.pl_mean):
+            #         pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
+            #         if not torch.isnan(pl_loss):
+            #             gen_loss = gen_loss + pl_loss
 
-                #w.r.t I_dash_to_t
-                pl_lengths = calc_pl_lengths(z_s_styles, I_dash_s_to_t)
-                avg_pl_length = torch.mean(pl_lengths.detach())
-                if not is_empty(self.pl_mean):
-                    pl_loss2 = ((pl_lengths - self.pl_mean) ** 2).mean()
-                    if not torch.isnan(pl_loss):
-                        gen_loss = gen_loss + pl_loss2
+            #     #w.r.t I_dash_to_t
+            #     pl_lengths = calc_pl_lengths(z_s_styles, I_dash_s_to_t)
+            #     avg_pl_length = torch.mean(pl_lengths.detach())
+            #     if not is_empty(self.pl_mean):
+            #         pl_loss2 = ((pl_lengths - self.pl_mean) ** 2).mean()
+            #         if not torch.isnan(pl_loss):
+            #             gen_loss = gen_loss + pl_loss2
 
 
             gen_loss = gen_loss / self.gradient_accumulate_every
@@ -1413,10 +1445,10 @@ class Trainer():
 
         # calculate moving averages
 
-        if apply_path_penalty and not torch.isnan(avg_pl_length):
-            self.pl_mean = self.pl_length_ma.update_average(
-                self.pl_mean, avg_pl_length)
-            self.track(self.pl_mean, 'PL')
+        # if apply_path_penalty and not torch.isnan(avg_pl_length):
+        #     self.pl_mean = self.pl_length_ma.update_average(
+        #         self.pl_mean, avg_pl_length)
+        #     self.track(self.pl_mean, 'PL')
 
         if self.is_main and self.steps % 10 == 0 and self.steps > 20000:
             self.GAN.EMA()
@@ -1496,7 +1528,7 @@ class Trainer():
         
         # regular
         size = min(batch_size, batch_size)
-        generated_images = self.generate_truncated(self.GAN.G, z_s_styles, noise, E_s)
+        generated_images = self.GAN.G(z_s_styles, noise, E_s)
         generated_stack = torch.cat(
             (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images[:size]), dim=0)
        
@@ -1508,7 +1540,7 @@ class Trainer():
 
         # moving averages
 
-        generated_images = self.generate_truncated(self.GAN.GE, z_s_styles, noise, E_s)
+        generated_images = self.GAN.GE(z_s_styles, noise, E_s)
         generated_stack = torch.cat(
             (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images[:size]), dim=0)
         save_path = str(self.results_dir / self.name / f'{str(num)}-ema.{ext}')
