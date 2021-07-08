@@ -1305,7 +1305,7 @@ class Trainer():
             fake_output_1, fake_q_loss_1 = D_aug(
                 I_dash_s.clone().detach(), detach=True, **aug_kwargs)
 
-            I_s.requires_grad_(requires_grad=False)  # keep
+            I_s.requires_grad_()  # keep
             real_output_1, real_q_loss_1 = D_aug(I_s, **aug_kwargs)
 
             real_output_loss_1 = real_output_1
@@ -1316,7 +1316,7 @@ class Trainer():
             fake_output_2, fake_q_loss_2 = D_aug(
                 I_dash_s_to_t.clone().detach(), detach=True, **aug_kwargs)
 
-            I_t.requires_grad_(requires_grad=False)
+            I_t.requires_grad_()
             # opt params are for self.D instead os self.D_aug
             real_output_2, real_q_loss_2 = D_aug(I_t, **aug_kwargs)
 
