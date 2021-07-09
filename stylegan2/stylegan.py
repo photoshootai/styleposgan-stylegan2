@@ -574,16 +574,16 @@ class Generator(nn.Module):
         self.image_size = image_size
         self.latent_dim = latent_dim
         
-        self.num_layers = 5#int(log2(image_size) - 1)
+        self.num_layers = 4#int(log2(image_size) - 1)
 
-        filters = [network_capacity * (2 ** (i + 1)) for i in range(self.num_layers)][::-1]
+        # filters = [network_capacity * (2 ** (i + 1)) for i in range(self.num_layers)][::-1]
 
-        set_fmap_max = partial(min, fmap_max)
-        filters = list(map(set_fmap_max, filters))
-        init_channels = filters[0]
-        filters = [init_channels, *filters]
+        # set_fmap_max = partial(min, fmap_max)
+        # filters = list(map(set_fmap_max, filters))
+        # init_channels = filters[0]
+        # filters = [init_channels, *filters]
 
-        in_out_pairs = zip(filters[:-1], filters[1:])
+        # in_out_pairs = zip(filters[:-1], filters[1:])
         # print("In out pairs: ", list(in_out_pairs))
         # self.no_const = no_const
 
@@ -592,7 +592,8 @@ class Generator(nn.Module):
         # else:
         #     self.initial_block = nn.Parameter(torch.randn((1, init_channels, 4, 4)))
 
-        self.initial_conv = nn.Conv2d(filters[0], filters[0], 3, padding=1)
+        initial_filter_size = 512
+        self.initial_conv = nn.Conv2d(initial_filter_size, initial_filter_size, 3, padding=1)
         self.blocks = nn.ModuleList([])
         self.attns = nn.ModuleList([])
 
