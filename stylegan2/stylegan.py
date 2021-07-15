@@ -7,7 +7,7 @@ from tqdm import tqdm
 from math import floor, log2
 
 
-from random import random
+from random import random, sample
 from shutil import rmtree
 from functools import partial
 import multiprocessing
@@ -724,12 +724,12 @@ class Discriminator(nn.Module):
 
 
 class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
-    def __init__(self, image_size, latent_dim=2048, mtcnn_crop_size=160, fmap_max=512, style_depth=8, network_capacity=16, transparent=False, fp16=False, cl_reg=False, steps=1, lr=1e-4, ttur_mult=2, fq_layers=[], fq_dict_size=256, attn_layers=[], no_const=False, lr_mlp=0.1, rank=0):
+    def __init__(self, image_size, latent_dim=2048, mtcnn_crop_size=80, fmap_max=512, style_depth=8, network_capacity=16, transparent=False, fp16=False, cl_reg=False, steps=1, lr=1e-4, ttur_mult=2, fq_layers=[], fq_dict_size=256, attn_layers=[], no_const=False, lr_mlp=0.1, rank=0):
         super().__init__()
         self.lr = lr
         self.steps = steps
         self.ema_updater = EMA(0.995)
-        self.mtcnn_crop_size = 160
+        self.mtcnn_crop_size = mtcnn_crop_size
 
         self.G = Generator(image_size, latent_dim, network_capacity,
                            transparent=transparent, attn_layers=attn_layers, fmap_max=fmap_max)
@@ -991,7 +991,7 @@ class Trainer():
         self.rank = rank
         self.world_size = world_size
 
-        self.mtcnn_crop_size = 160
+        self.mtcnn_crop_size = 80 #Changed from 160 to 80
 
         h_params = {'image_size': self.image_size,
                     'network_capacity': self.network_capacity,
@@ -1067,10 +1067,20 @@ class Trainer():
     def config(self):
         return {'image_size': self.image_size, 'network_capacity': self.network_capacity, 'lr_mlp': self.lr_mlp, 'transparent': self.transparent, 'fq_layers': self.fq_layers, 'fq_dict_size': self.fq_dict_size, 'attn_layers': self.attn_layers, 'no_const': self.no_const}
 
-    def set_data_src(self, folder, overfit):
+    def set_data_src(self, folder, overfit, subset):
 
         self.dataset = DeepFashionDataset(
             folder, self.image_size, transparent=self.transparent, aug_prob=self.dataset_aug_prob)
+        
+        #If Subset command line option
+        if subset is not None: #subset = int
+            full_dataset_len = len(self.dataset)
+            assert subset <= full_dataset_len , "Subset Count should be <= than count of full dataset"
+            subset_indices = sample(range(0, len(self.dataset)), subset)
+            self.dataset = torch.utils.data.Subset(self.dataset, subset_indices)
+            assert len(self.dataset) <= full_dataset_len, "Generated subset count should be <= than count of full dataset"
+            print("Taking Subset for count: ", len(self.dataset))
+        
         num_workers = num_workers = default(
             self.num_workers, NUM_CORES if not self.is_ddp else 0)
         sampler = DistributedSampler(
