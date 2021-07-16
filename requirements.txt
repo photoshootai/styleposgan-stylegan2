@@ -18,3 +18,6 @@ retry
 pytorch-fid
 adabelief-pytorch
 facenet-pytorch
+numpy
+UVTextureConverter
+detectron2 @ https://dl.fbaipublicfiles.com/detectron2/wheels/cu101/torch1.8/index.html
