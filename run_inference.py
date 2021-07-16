@@ -1,15 +1,28 @@
 import argparse
-import os
-import shutil
-import pickle
-from functools import partial
+from typing import Any, Callable, Dict, Tuple
+import os, pickle, shutil, time
+
+import cv2
+import torch, torchvision
+import torch.nn.functional as F
+import numpy as np
+
+from PIL import Image
+from tqdm import tqdm
+from itertools import starmap
+from multiprocessing import Pool
 from subprocess import Popen, PIPE
+from functools import partial, reduce
+from UVTextureConverter import Atlas2Normal
+
 from models import ANet, PNet
 from datasets import DeepFashion as DF
+from stylegan2.stylegan import ModelLoader
+
 
 def run_densepose_network(source_img_dir: str, output_pkl: str,
                           apply_net_path: str='apply_net.py',
-                          output_stdout: bool=True) -> int:
+                          stdout: bool=True) -> int:
     """
     Run denspose on single image path or directory of images and produce a
     pickle file.
@@ -34,7 +47,7 @@ def run_densepose_network(source_img_dir: str, output_pkl: str,
     call += [MODEL_URL, source_img_dir]
 
     with Popen(call, stdout=PIPE, stderr=PIPE) as proc:
-        if output_stdout:
+        if stdout:
             print(proc.stdout.read().decode('utf-8'))
         print(proc.stderr.read().decode('utf-8'))
 
@@ -153,8 +166,8 @@ def main():
     src_pkl = os.path.join(out_dir, 'src.pkl')
     targ_pkl = os.path.join(out_dir, 'targ.pkl')
     
-    n_src_files = run_densepose_network(src, src_pkl, apply_net, output=verb)
-    n_targ_files = run_densepose_network(targ, targ_pkl, apply_net, output=verb)
+    n_src_files = run_densepose_network(src, src_pkl, apply_net, stdout=verb)
+    n_targ_files = run_densepose_network(targ, targ_pkl, apply_net, stdout=verb)
 
     assert n_src_files == n_targ_files, 'src/targ had different # of files'
 
@@ -197,15 +210,39 @@ def main():
             data_pairs[file_name][data] = (I, P, A)
 
     # data_pairs {img_name: {'src': (I, P, A), 'targ': (I, P, A)}, ...}
+    model = ModelLoader(model_dir, name=model_name)
+    size = 1
+    image_size = 256
+    results_dir = os.path.join(out_dir, 'results')
+    if not os.path.isdir(results_dir):
+        os.mkdir(results_dir)
+
     for img, pair in data_pairs.items():
-        
-        I_dash_s = None
-        I_dash_s_to_t = None
+        I_s, P_s, A_s = pair['src']
+        I_t, P_t, _ = pair['targ']
 
+        A_s = F.interpolate(A_s, size=image_size)
 
+        (I_dash_s, I_dash_s_to_t,
+         I_dash_s_ema, I_dash_s_to_t_ema) = model.generate(*pair.values())
 
+        regular = torch.cat((
+            I_s[:size], P_s[:size], A_s[:size], I_t[:size], P_t[:size],
+            I_dash_s[:size], I_dash_s_to_t[:size]
+        ), dim=1)
+
+        ema = torch.cat((
+            I_s[:size], P_s[:size], A_s[:size], I_t[:size], P_t[:size],
+            I_dash_s_ema[:size], I_dash_s_to_t_ema[:size]
+        ), dim=1)
+
+        # final_img = torch.cat((regular, ema), dim=0)  # to concat reg + ema together
+        reg_save_path = os.path.join(results_dir, f'{img}_inference.jpg')
+        ema_save_path = os.path.join(results_dir, f'{img}_inference_EMA.jpg')
+
+        torchvision.utils.save_image(regular, reg_save_path, nrow=size)
+        torchvision.utils.save_image(ema, ema_save_path, nrow=size)
 
 
 if __name__ == '__main__':
     main()
-    
