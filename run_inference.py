@@ -18,6 +18,7 @@ from UVTextureConverter import Atlas2Normal
 from models import ANet, PNet
 from datasets import DeepFashion as DF
 from stylegan2.stylegan import ModelLoader
+# import densepose
 
 
 def run_densepose_network(source_img_dir: str, output_pkl: str,
@@ -43,7 +44,7 @@ def run_densepose_network(source_img_dir: str, output_pkl: str,
 
     call =  ['python3', apply_net_path, 'dump', '-v']
     call += ['--output', output_pkl]
-    call += [f'configs/{MODEL_URL.split("/")[-3]}.yaml']
+    call += [os.path.join('.', 'configs', f'{MODEL_URL.split("/")[-3]}.yaml')]
     call += [MODEL_URL, source_img_dir]
 
     with Popen(call, stdout=PIPE, stderr=PIPE) as proc:
@@ -166,6 +167,8 @@ def main():
     src_pkl = os.path.join(out_dir, 'src.pkl')
     targ_pkl = os.path.join(out_dir, 'targ.pkl')
     
+    # curr_dir = os.getcwd()
+    # os.chdir(os.path.join('.', 'DensePose'))
     n_src_files = run_densepose_network(src, src_pkl, apply_net, stdout=verb)
     n_targ_files = run_densepose_network(targ, targ_pkl, apply_net, stdout=verb)
 
@@ -177,6 +180,7 @@ def main():
     with open(targ_pkl, 'rb') as f:
         verb and print(f'operating on pickle {targ_pkl}')
         targ_data = pickle.load(f)
+    # os.chdir(curr_dir)
 
     data_map = {'src': src_data, 'targ': targ_data}
     data_pairs = dict() # {img_name: {'src' (I, P, A), 'targ': (I, P, A)}}
@@ -245,4 +249,7 @@ def main():
 
 
 if __name__ == '__main__':
+    import sys
+    print(sys.path)
+    sys.path.append('/content/styleposgan-stylegan2/densepose')
     main()
