@@ -1789,44 +1789,40 @@ class ModelLoader:
         self.model.load(load_from)
     
     def generate(self, src, targ):
-        temp = self.model
-        self.model = self.model.GAN
-        I_s, P_s, A_s = src
-        I_t, P_t, _ = targ
+        (I_s, P_s, A_s), (I_t, P_t, _) = src, targ
         print(I_s.shape, P_s.shape, A_s.shape, I_t.shape, P_t.shape)
-        print(self.model)
 
-        latent_dim = self.model.G.latent_dim
-        image_size = self.model.G.image_size
-        num_layers = self.model.G.num_layers
+        latent_dim = self.model.GAN.G.latent_dim
+        image_size = self.model.GAN.G.image_size
+        num_layers = self.model.GAN.G.num_layers
 
-        I_s = I_s.unsqueeze(dim=0).cuda(self.rank)
-        P_s = P_s.unsqueeze(dim=0).cuda(self.rank)
-        A_s = A_s.unsqueeze(dim=0).cuda(self.rank)
+        I_s = I_s.cuda(self.rank)
+        P_s = P_s.cuda(self.rank)
+        A_s = A_s.cuda(self.rank)
         
-        I_t = I_t.unsqueeze(dim=0).cuda(self.rank)
-        P_t = P_t.unsqueeze(dim=0).cuda(self.rank)
+        I_t = I_t.cuda(self.rank)
+        P_t = P_t.cuda(self.rank)
 
         batch_size = I_t.shape[0] # always 1 for now
 
         # # Get encodings
-        E_s = self.model.p_net(A_s)
-        E_t = self.model.p_net(P_t)
-        z_s_1d = self.model.a_net(A_s)
+        E_s = self.model.GAN.p_net(A_s)
+        E_t = self.model.GAN.p_net(P_t)
+        z_s_1d = self.model.GAN.a_net(A_s)
 
         z_s_def = [(z_s_1d, num_layers)]
         z_s_styles = styles_def_to_tensor(z_s_def)
 
         noise = image_noise(batch_size, image_size, device=self.rank)
 
-        I_dash_s = self.model.G(z_s_styles, noise, E_s)
-        I_dash_s_to_t = self.model.G(z_s_styles, noise, E_t)
+        I_dash_s = self.model.GAN.G(z_s_styles, noise, E_s)
+        I_dash_s_to_t = self.model.GAN.G(z_s_styles, noise, E_t)
 
-        I_dash_s_ema = self.model.GE(z_s_styles, noise, E_s)
-        I_dash_s_to_t_ema = self.model.GE(z_s_styles, noise, E_t)
+        I_dash_s_ema = self.model.GAN.GE(z_s_styles, noise, E_s)
+        I_dash_s_to_t_ema = self.model.GAN.GE(z_s_styles, noise, E_t)
 
-        self.model = temp
-        return I_dash_s, I_dash_s_to_t, I_dash_s_ema, I_dash_s_to_t_ema
+        return (image_size, I_dash_s, I_dash_s_to_t,
+                I_dash_s_ema, I_dash_s_to_t_ema)
 
     def noise_to_styles(self, noise, trunc_psi=None):
         noise = noise.cuda()

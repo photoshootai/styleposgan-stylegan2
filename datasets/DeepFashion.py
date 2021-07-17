@@ -93,6 +93,26 @@ class scale_and_crop(object):
         return cropped
 
 
+def get_transforms(scale_and_crop):
+    return (
+        transforms.Compose([  # For source images
+            transforms.ToTensor(),  # [0, 255] gets mapped to [0.0, 1.0]
+            # convert to 3 channels (squash alpha) -> don't need
+            # transforms.Lambda(self.to_rgb),
+            transforms.Lambda(scale_and_crop)
+        ]),
+        transforms.Compose([  # For Pose maps
+            # this will screw up pose segmentation since {0,..., 24} gets mapped to [0.0, 1.0]
+            transforms.ToTensor(),
+            # guaranteed to be 3 channels
+            transforms.Lambda(scale_and_crop)
+        ]),
+        transforms.Compose([  # For texture Maps
+            transforms.ToTensor()  # converts [0, 255] to float[0.0, 1.0]
+        ])
+    )
+
+
 cat_map = {'sex': 0, 'clothing_category': 1, 'const_1': 2, 'model': 3, 'clothing_id': 4, 'idx': 5, 'pose': 6}
 
 def extract_prop(file_name: str, props: Set[str]={'model'}) -> Tuple[str]:
@@ -188,23 +208,7 @@ class DeepFashionDataset(Dataset):
         # self.to_rgb = convert_transparent_to_rgb if transparent else lambda x: x
         # self.expand_greyscale = expand_greyscale(transparent)
         self.scale_and_crop = scale_and_crop(self.img_size) if scale_crop else transforms.Resize(self.img_size)
-        self.transforms = (
-            transforms.Compose([  # For source images
-                transforms.ToTensor(),  # [0, 255] gets mapped to [0.0, 1.0]
-                # convert to 3 channels (squash alpha) -> don't need
-                # transforms.Lambda(self.to_rgb),
-                transforms.Lambda(self.scale_and_crop)
-            ]),
-            transforms.Compose([  # For Pose maps
-                # this will screw up pose segmentation since {0,..., 24} gets mapped to [0.0, 1.0]
-                transforms.ToTensor(),
-                # guaranteed to be 3 channels
-                transforms.Lambda(self.scale_and_crop)
-            ]),
-            transforms.Compose([  # For texture Maps
-                transforms.ToTensor()  # converts [0, 255] to float[0.0, 1.0]
-            ])
-        )
+        self.transforms = get_transforms(self.scale_and_crop)
 
     def __len__(self):
         """
