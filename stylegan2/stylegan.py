@@ -1327,7 +1327,7 @@ class Trainer():
                 gp1 = gradient_penalty(I_s, real_output_1)
                 gp2 = gradient_penalty(I_t, real_output_2)
 
-                self.last_gp_loss = gp1.clone().detach().item() + gp1.clone().detach().item()  # remove item
+                self.last_gp_loss = gp1.clone().detach().item() + gp2.clone().detach().item()  # remove item
                 self.track(self.last_gp_loss, 'GP')
                 disc_loss = disc_loss + gp1 + gp2
 
