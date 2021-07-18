@@ -166,11 +166,13 @@ def generate_ipa(d: Dict[str, Any], Ts: Iterable[Callable], dests: Tuple[str]) -
     A = torch.from_numpy(convert_atlas_to_SURREAL(atlas))
 
     I_path, P_path, A_path = dests
-    I, P, A = (t(x) for t, x in zip(Ts, (I, P, A)))
-    cv2.imwrite(A_path, A.cpu().numpy())
-    cv2.imwrite(P_path, P.cpu().numpy())
-    cv2.imwrite(I_path, I.cpu().numpy())
+    # cv2.imwrite(I_path, (I * 255).cpu().numpy())
+    # cv2.imwrite(P_path, (P * 255).cpu().numpy())
+    # cv2.imwrite(A_path, (A * 255).cpu().numpy())
 
+    torchvision.utils.save_image(I.permute(2, 0, 1), I_path)
+    cv2.imwrite(P_path, (P * 255).cpu().numpy())
+    torchvision.utils.save_image(A.permute(2, 0, 1), A_path)
     return file_name
 
 
@@ -280,7 +282,7 @@ def main(src: str, targ: str,
         src_data, targ_data = pickle.load(f1), pickle.load(f2)
 
     scale_and_crop = DF.scale_and_crop(image_size)
-    T = DF.get_transforms(scale_and_crop, is_tensor=True)
+    T = DF.get_transforms(scale_and_crop, is_tensor=False)
     to_tensor = torchvision.transforms.ToTensor()
 
     data_map = {'src': src_data, 'targ': targ_data}
@@ -302,9 +304,11 @@ def main(src: str, targ: str,
         #        all(t is not None for t in ipa_t):
         #     print(f'Error computing densepose for one of the files, exiting')
         #     exit()
+
+        print(dests_s, dests_t)
+        ipa_s = (t(x) for t, x in zip(T, map(Image.open, dests_s)))
+        ipa_t = (t(x) for t, x in zip(T, map(Image.open, dests_t)))
         
-        ipa_s = map(to_tensor, map(Image.open, dests_s))
-        ipa_t = map(to_tensor, map(Image.open, dests_t))
         data_pairs[file_name] = (ipa_s, ipa_t)
     else:
         print('batched operation not supported yet')
@@ -321,7 +325,7 @@ def main(src: str, targ: str,
     empty = (None, None)
     data_iter = iter(data_pairs.items())
     img, pair = next(data_iter, empty)
-    while img is not None:
+    while img is not None and pair is not None:
         (I_s, P_s, A_s), (I_t, P_t, _) = pair
 
         I_s = I_s.unsqueeze(0).cuda()#, size=image_size)
@@ -332,6 +336,8 @@ def main(src: str, targ: str,
 
         (image_size, I_dash_s, I_dash_s_to_t, I_dash_s_ema,
          I_dash_s_to_t_ema) = model.generate((I_s, P_s, A_s), (I_t, P_t))
+
+        A_s = F.interpolate(A_s, size=image_size)
 
         regular = torch.cat(
             (I_s, P_s, A_s, I_t, P_t, I_dash_s, I_dash_s_to_t), dim=0
@@ -347,6 +353,7 @@ def main(src: str, targ: str,
 
         torchvision.utils.save_image(regular, reg_save_path, nrow=batch_size)
         torchvision.utils.save_image(ema, ema_save_path, nrow=batch_size)
+        img, pair = next(data_iter, empty)
     
     # go back to previous directory
     os.chdir(curr_dir)

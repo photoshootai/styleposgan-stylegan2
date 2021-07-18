@@ -1792,22 +1792,21 @@ class ModelLoader:
     
     def generate(self, src, targ):
         (I_s, P_s, A_s), (I_t, P_t) = src, targ
-        print(I_s.shape, P_s.shape, A_s.shape, I_t.shape, P_t.shape)
 
         latent_dim = self.model.GAN.G.latent_dim
         image_size = self.model.GAN.G.image_size
         num_layers = self.model.GAN.G.num_layers
 
-        # I_s = I_s.cuda(self.rank)
-        # P_s = P_s.cuda(self.rank)
-        # A_s = A_s.cuda(self.rank)
-        # I_t = I_t.cuda(self.rank)
-        # P_t = P_t.cuda(self.rank)
+        I_s = I_s.cuda(self.rank)
+        P_s = P_s.cuda(self.rank)
+        A_s = A_s.cuda(self.rank)
+        I_t = I_t.cuda(self.rank)
+        P_t = P_t.cuda(self.rank)
 
         batch_size = I_t.shape[0] # always 1 for now
 
         # # Get encodings
-        E_s = self.model.GAN.p_net(A_s)
+        E_s = self.model.GAN.p_net(P_s)
         E_t = self.model.GAN.p_net(P_t)
         z_s_1d = self.model.GAN.a_net(A_s)
 
