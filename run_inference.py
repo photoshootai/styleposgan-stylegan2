@@ -8,7 +8,7 @@ from functools import partial, reduce
 from itertools import starmap
 from multiprocessing import Pool
 from subprocess import PIPE, Popen
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Tuple, Union, Iterable
 
 import cv2
 import numpy as np
@@ -132,7 +132,7 @@ def convert_atlas_to_SURREAL(atlas: torch.tensor) -> torch.tensor:
     return normal_tex * 255.
 
 
-def generate_ipa(d: Dict[str, Any]) -> Tuple[torch.Tensor]:
+def generate_ipa(d: Dict[str, Any], T: Iterable[Callable]) -> Tuple[torch.Tensor]:
     """
     Create I, P, A from densepose vis dict.
     Arguments:
@@ -164,7 +164,7 @@ def generate_ipa(d: Dict[str, Any]) -> Tuple[torch.Tensor]:
 
     atlas = create_texture_atlas(P.permute(2, 0, 1).cpu(), I)
     A = torch.from_numpy(convert_atlas_to_SURREAL(atlas))
-    return file_name, (I.cuda(), P.cuda(), A.cuda())
+    return file_name, (t(x).cuda() for t, x in zip(T, (I, P, A))
 
 
 def parse_args():
@@ -275,7 +275,7 @@ def main(src: str, targ: str,
     for data in ('src', 'targ'):
         verb and print(f'generating {data} I, P, A tensors')
         for d in data_map[data]:
-            file_name, ipa = generate_ipa(d)
+            file_name, ipa = generate_ipa(d, T)
 
             if not all(t is not None for t in ipa):
                 print(f'Error computing densepose for {file_name}')
@@ -285,7 +285,7 @@ def main(src: str, targ: str,
             if file_name not in data_pairs:
                 data_pairs[file_name] = dict()
 
-            data_pairs[file_name][data] = (t(x) for t, x in zip(T, ipa))
+            data_pairs[file_name][data] = ipa
 
     # data_pairs {img_name: {'src': (I, P, A), 'targ': (I, P, A)}, ...}
     batch_size = min(batch_size, n_src_files)
