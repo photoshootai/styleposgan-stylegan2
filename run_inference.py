@@ -158,13 +158,13 @@ def generate_ipa(d: Dict[str, Any]) -> Tuple[torch.Tensor]:
     y_off, y_delta = int(y1), int(y2 - y1)
 
     T = d['pred_densepose'][0]
-    IUV = torch.cat((T.labels.unsqueeze(0), T.uv.clamp(0, 1)), dim=0).cpu()
+    IUV = torch.cat((T.labels.unsqueeze(0), T.uv.clamp(0, 1)), dim=0)
     P = torch.zeros(I.shape)
     P[y_off:y_off + y_delta, x_off:x_off + x_delta] = IUV.permute(1, 2, 0)
 
-    atlas = create_texture_atlas(P.permute(2, 0, 1), I)
-    A = convert_atlas_to_SURREAL(atlas)
-    return I, P, A
+    atlas = create_texture_atlas(P.permute(2, 0, 1).cpu(), I)
+    A = torch.from_numpy(convert_atlas_to_SURREAL(atlas))
+    return file_name, (I.cuda(), P.cuda(), A.cuda())
 
 
 def parse_args():
@@ -202,7 +202,7 @@ def parse_args():
         help='path to denspose folder'
     )
     parser.add_argument(
-        '--image_size', type=int, default=256,
+        '--image_size', type=int, default=[256, 256], nargs='+',
         help='image size to use in model forward'
     )
     parser.add_argument(
@@ -216,16 +216,18 @@ def parse_args():
     parser.add_argument('-v', action='store_true', help='verbose output')
 
     args = parser.parse_args()
+    image_size = (tuple(args.image_size[:2]) if len(args.image_size) >= 2
+                  else (*args.image_size, *args.image_size))
     return (args.source, args.target, args.outputs, args.model_dir,
-            args.densepose, args.image_size, args.batched, args.batch_size,
-            args.v)
+            args.densepose, image_size, args.batched, args.batch_size, args.v)
 
 
 def main(src: str, targ: str,
          out_dir: str=os.path.join('.', 'data', 'inference_outputs'),
          model_dir: str=os.path.join('.', 'results', 'default'),
          densepose_path: str=os.path.join('.', 'densepose'),
-         image_size: int=256, batched: bool=False, batch_size: int=4,
+         image_size: Union[Tuple[int], int]=(256, 256),
+         batched: bool=False, batch_size: int=4,
          verb: bool=False) -> None:
     """
     """
@@ -255,46 +257,53 @@ def main(src: str, targ: str,
     src_pkl = os.path.join(out_dir, 'src.pkl')
     targ_pkl = os.path.join(out_dir, 'targ.pkl')
 
-    n_src_files = run_densepose_network(src, src_pkl, densepose_path, verb)
-    n_targ_files = run_densepose_network(targ, targ_pkl, densepose_path, verb)
+    verb and print('computing pose maps')
+    n_src_files = 1#run_densepose_network(src, src_pkl, densepose_path, verb)
+    n_targ_files = 1#run_densepose_network(targ, targ_pkl, densepose_path, verb)
 
     assert n_src_files == n_targ_files, 'src/targ had different # of files'
 
     with open(src_pkl, 'rb') as f1, open(targ_pkl, 'rb') as f2:
+        verb and print('loading densepose results')
         src_data, targ_data = pickle.load(f1), pickle.load(f2)
 
     scale_and_crop = DF.scale_and_crop(image_size)
-    T = DF.get_transforms(scale_and_crop)
+    T = DF.get_transforms(scale_and_crop, is_tensor=True)
 
     data_map = {'src': src_data, 'targ': targ_data}
     data_pairs = dict() # {img_name: {'src' (I, P, A), 'targ': (I, P, A)}}
     for data in ('src', 'targ'):
+        verb and print(f'generating {data} I, P, A tensors')
         for d in data_map[data]:
-            ipa = generate_ipa(d)
+            file_name, ipa = generate_ipa(d)
 
-            if not all(ipa):
+            if not all(t is not None for t in ipa):
                 print(f'Error computing densepose for {file_name}')
+                data_pairs[file_name] = None
                 continue
 
             if file_name not in data_pairs:
                 data_pairs[file_name] = dict()
 
-            data_pairs[file_name][data] = tuple(t(x) for t, x in zip(T, ipa))
+            data_pairs[file_name][data] = (t(x) for t, x in zip(T, ipa))
 
     # data_pairs {img_name: {'src': (I, P, A), 'targ': (I, P, A)}, ...}
     batch_size = min(batch_size, n_src_files)
-    model = ModelLoader(model_dir, name=model_name, batch_size=batch_size,
-                        image_size=image_size, n_files=n_src_files)
+    verb and print(f'loading latest model at {model_dir}')
+    model_name = os.path.basename(model_dir)
+    model = ModelLoader(base_dir=model_dir, name=model_name, batch_size=batch_size)
     
     results_dir = os.path.join(out_dir, 'results')
     if not os.path.isdir(results_dir):
+        verb and print('creating results dir {results_dir}')
         os.mkdir(results_dir)
 
     empty = (None, None)
-    data_iter = data_pairs.items()
+    data_iter = iter(data_pairs.items())
     img, pair = next(data_iter, empty)
-    while img is not None and pair is not None:
-        (I_s, P_s, A_s), (I_t, P_t, _) = pair.values()
+    while img is not None:
+        print(pair)
+        (I_s, P_s, A_s), (I_t, P_t, _) = tuple(*pair.values())
 
         I_s = I_s.unsqueeze(0)
         P_s = P_s.unsqueeze(0)

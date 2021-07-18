@@ -1783,9 +1783,10 @@ class Trainer():
 
 
 class ModelLoader:
-    def __init__(self, *, base_dir, name='default', load_from=-1):
+    def __init__(self, *, base_dir, name='default', load_from=-1, batch_size=1):
         self.model = Trainer(name=name, base_dir=base_dir)
         self.rank = 0
+        self.batch_size = batch_size
         self.model.load(load_from)
     
     def generate(self, src, targ):
