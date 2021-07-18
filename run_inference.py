@@ -193,6 +193,11 @@ def parse_args():
         help='directory to store outputs and temporary inference files'
     )
     parser.add_argument(
+        '--model_dir', type=str,
+        default=os.path.join('.', 'results', 'default'),
+        help='path to model checkpoint directory'
+    )
+    parser.add_argument(
         '--densepose', type=str, default=os.path.join('.', 'densepose'),
         help='path to denspose folder'
     )
@@ -211,12 +216,14 @@ def parse_args():
     parser.add_argument('-v', action='store_true', help='verbose output')
 
     args = parser.parse_args()
-    return (args.source, args.target, args.outputs, args.densepose,
-            args.image_size, args.batched, args.batch_size, args.v)
+    return (args.source, args.target, args.outputs, args.model_dir,
+            args.densepose, args.image_size, args.batched, args.batch_size,
+            args.v)
 
 
 def main(src: str, targ: str,
          out_dir: str=os.path.join('.', 'data', 'inference_outputs'),
+         model_dir: str=os.path.join('.', 'results', 'default'),
          densepose_path: str=os.path.join('.', 'densepose'),
          image_size: int=256, batched: bool=False, batch_size: int=4,
          verb: bool=False) -> None:
