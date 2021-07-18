@@ -1783,26 +1783,26 @@ class Trainer():
 
 
 class ModelLoader:
-    def __init__(self, *, base_dir, name='default', load_from=-1, batch_size=1):
-        self.model = Trainer(name=name, base_dir=base_dir)
+    def __init__(self, *, base_dir, name='default', load_from=-1, batch_size=1,
+                 image_size=256):
+        self.model = Trainer(name=name, base_dir=base_dir, image_size=image_size)
         self.rank = 0
         self.batch_size = batch_size
         self.model.load(load_from)
     
     def generate(self, src, targ):
-        (I_s, P_s, A_s), (I_t, P_t, _) = src, targ
+        (I_s, P_s, A_s), (I_t, P_t) = src, targ
         print(I_s.shape, P_s.shape, A_s.shape, I_t.shape, P_t.shape)
 
         latent_dim = self.model.GAN.G.latent_dim
         image_size = self.model.GAN.G.image_size
         num_layers = self.model.GAN.G.num_layers
 
-        I_s = I_s.cuda(self.rank)
-        P_s = P_s.cuda(self.rank)
-        A_s = A_s.cuda(self.rank)
-        
-        I_t = I_t.cuda(self.rank)
-        P_t = P_t.cuda(self.rank)
+        # I_s = I_s.cuda(self.rank)
+        # P_s = P_s.cuda(self.rank)
+        # A_s = A_s.cuda(self.rank)
+        # I_t = I_t.cuda(self.rank)
+        # P_t = P_t.cuda(self.rank)
 
         batch_size = I_t.shape[0] # always 1 for now
 

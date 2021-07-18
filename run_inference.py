@@ -95,7 +95,7 @@ def create_texture_atlas(IUV: torch.tensor,
 
     for part_id in range(1, 25):
         part = torch.zeros(N, N, 3).long()  # Each part is N x N x [R, G, B]
-        x, y = np.where(IUV[0] == part_id)  # select pixels belonging to part {part_id}
+        x, y = torch.where(IUV[0] == part_id)  # select pixels belonging to part {part_id}
         x_idx = (U[x, y] * (N - 1)).long()  # must be long to index into tensor
         y_idx = (1 - (V[x, y]) * (N - 1)).long()  # x ∝ U; y ∝ (1 - V)
 
@@ -129,10 +129,10 @@ def convert_atlas_to_SURREAL(atlas: torch.tensor) -> torch.tensor:
     atlas_tex_stack = Atlas2Normal.split_atlas_tex(atlas.numpy())
     converter = Atlas2Normal(atlas_size=200, normal_size=512)
     normal_tex = converter.convert(atlas_tex_stack)
-    return normal_tex * 255.
+    return normal_tex
 
 
-def generate_ipa(d: Dict[str, Any], T: Iterable[Callable]) -> Tuple[torch.Tensor]:
+def generate_ipa(d: Dict[str, Any], Ts: Iterable[Callable], dests: Tuple[str]) -> Tuple[torch.Tensor]:
     """
     Create I, P, A from densepose vis dict.
     Arguments:
@@ -149,9 +149,9 @@ def generate_ipa(d: Dict[str, Any], T: Iterable[Callable]) -> Tuple[torch.Tensor
     file_name = os.path.basename(file_path)
 
     if 'pred_densepose' not in d:
-        return (None, None, None)
+        return file_name, (None, None, None)
 
-    I = torch.from_numpy(cv2.imread(file_path)).long()
+    I = torchvision.transforms.ToTensor()(Image.open(file_path)).permute(1, 2, 0)
 
     x1, y1, x2, y2 = d['pred_boxes_XYXY'][0]
     x_off, x_delta = int(x1), int(x2 - x1)
@@ -162,9 +162,16 @@ def generate_ipa(d: Dict[str, Any], T: Iterable[Callable]) -> Tuple[torch.Tensor
     P = torch.zeros(I.shape)
     P[y_off:y_off + y_delta, x_off:x_off + x_delta] = IUV.permute(1, 2, 0)
 
-    atlas = create_texture_atlas(P.permute(2, 0, 1).cpu(), I)
+    atlas = create_texture_atlas(P.permute(2, 0, 1).cpu(), (I * 255).long())
     A = torch.from_numpy(convert_atlas_to_SURREAL(atlas))
-    return file_name, (t(x).cuda() for t, x in zip(T, (I, P, A))
+
+    I_path, P_path, A_path = dests
+    I, P, A = (t(x) for t, x in zip(Ts, (I, P, A)))
+    cv2.imwrite(A_path, A.cpu().numpy())
+    cv2.imwrite(P_path, P.cpu().numpy())
+    cv2.imwrite(I_path, I.cpu().numpy())
+
+    return file_name
 
 
 def parse_args():
@@ -254,6 +261,11 @@ def main(src: str, targ: str,
         verb and print('output directory doesn\'t exist yet, creating now...')
         os.mkdir(out_dir)
 
+    results_dir = os.path.join(out_dir, 'results')
+    if not os.path.isdir(results_dir):
+        verb and print('creating results dir {results_dir}')
+        os.mkdir(results_dir)
+
     src_pkl = os.path.join(out_dir, 'src.pkl')
     targ_pkl = os.path.join(out_dir, 'targ.pkl')
 
@@ -269,50 +281,57 @@ def main(src: str, targ: str,
 
     scale_and_crop = DF.scale_and_crop(image_size)
     T = DF.get_transforms(scale_and_crop, is_tensor=True)
+    to_tensor = torchvision.transforms.ToTensor()
 
     data_map = {'src': src_data, 'targ': targ_data}
     data_pairs = dict() # {img_name: {'src' (I, P, A), 'targ': (I, P, A)}}
-    for data in ('src', 'targ'):
-        verb and print(f'generating {data} I, P, A tensors')
-        for d in data_map[data]:
-            file_name, ipa = generate_ipa(d, T)
+    make_paths = lambda s: (
+        os.path.join(results_dir, f'I_{s}.jpg'),
+        os.path.join(results_dir, f'P_{s}.jpg'),
+        os.path.join(results_dir, f'A_{s}.jpg')
+    )
+    if not batched:
+        ds = src_data[0]
+        dt = targ_data[0]
+        dests_s = make_paths('s')
+        dests_t = make_paths('t')
+        file_name = generate_ipa(ds, T, dests_s)
+        _ = generate_ipa(dt, T, dests_t)
 
-            if not all(t is not None for t in ipa):
-                print(f'Error computing densepose for {file_name}')
-                data_pairs[file_name] = None
-                continue
+        # if not all(t is not None for t in ipa_s) or \
+        #        all(t is not None for t in ipa_t):
+        #     print(f'Error computing densepose for one of the files, exiting')
+        #     exit()
+        
+        ipa_s = map(to_tensor, map(Image.open, dests_s))
+        ipa_t = map(to_tensor, map(Image.open, dests_t))
+        data_pairs[file_name] = (ipa_s, ipa_t)
+    else:
+        print('batched operation not supported yet')
+        exit()
 
-            if file_name not in data_pairs:
-                data_pairs[file_name] = dict()
-
-            data_pairs[file_name][data] = ipa
-
-    # data_pairs {img_name: {'src': (I, P, A), 'targ': (I, P, A)}, ...}
     batch_size = min(batch_size, n_src_files)
     verb and print(f'loading latest model at {model_dir}')
     model_name = os.path.basename(model_dir)
-    model = ModelLoader(base_dir=model_dir, name=model_name, batch_size=batch_size)
+    model = ModelLoader(base_dir=model_dir, name=model_name,
+                        batch_size=batch_size, image_size=image_size[0])
     
-    results_dir = os.path.join(out_dir, 'results')
-    if not os.path.isdir(results_dir):
-        verb and print('creating results dir {results_dir}')
-        os.mkdir(results_dir)
+    
 
     empty = (None, None)
     data_iter = iter(data_pairs.items())
     img, pair = next(data_iter, empty)
     while img is not None:
-        print(pair)
-        (I_s, P_s, A_s), (I_t, P_t, _) = tuple(*pair.values())
+        (I_s, P_s, A_s), (I_t, P_t, _) = pair
 
-        I_s = I_s.unsqueeze(0)
-        P_s = P_s.unsqueeze(0)
-        A_s = F.interpolate(A_s.unsqueeze(0), size=image_size)
-        I_t = I_t.unsqueeze(0)
-        P_t = P_t.unsqueeze(0)
+        I_s = I_s.unsqueeze(0).cuda()#, size=image_size)
+        P_s = P_s.unsqueeze(0).cuda()#, size=image_size)
+        A_s = A_s.unsqueeze(0).cuda()#, size=image_size)
+        I_t = I_t.unsqueeze(0).cuda()#, size=image_size)
+        P_t = P_t.unsqueeze(0).cuda()#, size=image_size)
 
         (image_size, I_dash_s, I_dash_s_to_t, I_dash_s_ema,
-         I_dash_s_to_t_ema) = model.generate((I_s, P_s, A_s), (I_t, P_t, _))
+         I_dash_s_to_t_ema) = model.generate((I_s, P_s, A_s), (I_t, P_t))
 
         regular = torch.cat(
             (I_s, P_s, A_s, I_t, P_t, I_dash_s, I_dash_s_to_t), dim=0
