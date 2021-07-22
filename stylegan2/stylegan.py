@@ -766,10 +766,10 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
         # init optimizers
         generator_params = list(self.G.parameters(
         )) + list(self.a_net.parameters()) + list(self.p_net.parameters())
-        self.G_opt = Adam(generator_params, lr=self.lr, betas=(0.5, 0.9))
+        self.G_opt = Adam(generator_params, lr=2e-4, betas=(0.5, 0.9))
         disc_params = list(self.D.parameters()) + \
             list(self.d_patch.parameters())
-        self.D_opt = Adam(disc_params, lr=self.lr , betas=(0.5, 0.9)) #Removed ttur multiplication here
+        self.D_opt = Adam(disc_params, lr=2e-4 , betas=(0.5, 0.9)) #Removed ttur multiplication here
 
         # init weights
         self._init_weights()
@@ -831,9 +831,9 @@ def get_d_total_loss(I_t, I_dash_s_to_t, pred_real_1, pred_fake_1, pred_real_2, 
 
 def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1, fake_output_2, real_output_2, vgg_model, face_id_model, d_patch_model, mtcnn_crop_size):
 
-    weight_l1 = 1.
-    weight_vgg = 1.
-    weight_face = 1.
+    weight_l1 = 7.
+    weight_vgg = 7.
+    weight_face = 7.
     weight_gan = 1.
     weight_patch = 1.
 
