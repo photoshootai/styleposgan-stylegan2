@@ -826,7 +826,7 @@ def get_d_total_loss(I_t, I_dash_s_to_t, pred_real_1, pred_fake_1, pred_real_2, 
     patch_loss = get_patch_loss(I_dash_s_to_t, I_t, d_patch)
 
     d_total_loss = gan_d_loss_1 + gan_d_loss_2 + torch.mul(patch_loss, -1)  # DPatch will maximize patch_loss
-    return d_total_loss, patch_loss  # Patch Loss needs to go up
+    return d_total_loss, patch_loss, (gan_d_loss_1+gan_d_loss_2)  # Patch Loss needs to go up
 
 
 def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1, fake_output_2, real_output_2, vgg_model, face_id_model, d_patch_model, mtcnn_crop_size):
@@ -851,7 +851,7 @@ def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_outp
 
     g_loss_total = rec_loss_1 + rec_loss_2 + gan_g_loss_1 + gan_g_loss_2 + patch_loss
     
-    return g_loss_total, rec_loss_1, rec_loss_2, patch_loss
+    return g_loss_total, rec_loss_1, rec_loss_2, patch_loss, (gan_g_loss_1+gan_g_loss_2)
 
 
 class Trainer():
@@ -1237,6 +1237,10 @@ class Trainer():
         total_disc_loss = torch.tensor(0.).cuda(self.rank)
         total_gen_loss = torch.tensor(0.).cuda(self.rank)
 
+        d_gan_losses_to_track = torch.tensor(0.).cuda(self.rank)
+        g_gan_losses_to_track = torch.tensor(0.).cuda(self.rank)
+        
+
         batch_size = math.ceil(self.batch_size / self.world_size)
 
         image_size = self.GAN.G.image_size
@@ -1319,7 +1323,7 @@ class Trainer():
 
 
             # divergence = D_loss_fn(real_output_loss, fake_output_loss)
-            divergence, patch_loss_to_track = get_d_total_loss(I_t, I_dash_s_to_t, real_output_loss_1,
+            divergence, patch_loss_to_track, d_gan_losses_added = get_d_total_loss(I_t, I_dash_s_to_t, real_output_loss_1,
                                                                fake_output_loss_1, real_output_loss_2, fake_output_loss_2, d_patch)
             disc_loss = divergence
 
@@ -1340,11 +1344,13 @@ class Trainer():
             patch_loss_to_track = patch_loss_to_track + \
                 torch.div(patch_loss_to_track.detach(),
                           self.gradient_accumulate_every)
+            d_gan_losses_to_track = d_gan_losses_to_track + torch.div(d_gan_losses_added.detach(), self.gradient_accumulate_every)
 
         self.d_loss = float(total_disc_loss.item())
         if (self.steps % 5 == 0):
             self.track(self.d_loss, 'D')
             self.track(patch_loss_to_track, 'DPatch')
+            self.track(d_gan_losses_to_track, 'D_GAN_Losses_Added')
 
         self.GAN.D_opt.step()
 
@@ -1385,7 +1391,7 @@ class Trainer():
             real_output_2 = None
 
             # loss = G_loss_fn(fake_output_loss, real_output)
-            loss, rec_loss_1, rec_loss_2, patch_loss = get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1,
+            loss, rec_loss_1, rec_loss_2, patch_loss, g_gan_losses_added = get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1,
                                                                         fake_output_2, real_output_2, vgg_model, face_id_model, d_patch, mtcnn_crop_size)
             gen_loss = loss
 
@@ -1417,12 +1423,17 @@ class Trainer():
                 torch.div(patch_loss.detach(),
                           self.gradient_accumulate_every)
 
+            g_gan_losses_to_track = g_gan_losses_to_track + \
+                torch.div(g_gan_losses_added.detach(),
+                          self.gradient_accumulate_every)
+
         self.g_loss = float(total_gen_loss.item())
         if (self.steps % 5 == 0):
             self.track(self.g_loss, 'G')
             self.track(rec_loss_1, 'RecLoss1')
             self.track(rec_loss_2, 'RecLoss2')
             self.track(patch_loss, 'GPatch')
+            self.track(g_gan_losses_to_track, 'G_GAN_Losses_Added')
 
         self.GAN.G_opt.step()
 
