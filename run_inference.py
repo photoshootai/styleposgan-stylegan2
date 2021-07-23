@@ -272,8 +272,8 @@ def main(src: str, targ: str,
     targ_pkl = os.path.join(out_dir, 'targ.pkl')
 
     verb and print('computing pose maps')
-    n_src_files = 1#run_densepose_network(src, src_pkl, densepose_path, verb)
-    n_targ_files = 1#run_densepose_network(targ, targ_pkl, densepose_path, verb)
+    n_src_files = run_densepose_network(src, src_pkl, densepose_path, verb)
+    n_targ_files = run_densepose_network(targ, targ_pkl, densepose_path, verb)
 
     assert n_src_files == n_targ_files, 'src/targ had different # of files'
 
