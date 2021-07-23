@@ -305,7 +305,6 @@ def main(src: str, targ: str,
         #     print(f'Error computing densepose for one of the files, exiting')
         #     exit()
 
-        print(dests_s, dests_t)
         ipa_s = (t(x) for t, x in zip(T, map(Image.open, dests_s)))
         ipa_t = (t(x) for t, x in zip(T, map(Image.open, dests_t)))
         
@@ -315,9 +314,9 @@ def main(src: str, targ: str,
         exit()
 
     batch_size = min(batch_size, n_src_files)
-    verb and print(f'loading latest model at {model_dir}')
-    model_name = os.path.basename(model_dir)
-    model = ModelLoader(base_dir=model_dir, name=model_name,
+    model_dir, model_name = os.path.split(model_dir)
+    verb and print(f'loading latest from run {model_name} in dir {model_dir}')
+    model = ModelLoader(base_dir=os.path.split(model_dir)[0], name=model_name,
                         batch_size=batch_size, image_size=image_size[0])
     
     
