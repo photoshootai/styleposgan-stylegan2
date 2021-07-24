@@ -777,7 +777,7 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
 
         self.cuda(rank)
 
-        print("StyleGAN2 initialized with args: ", {"image_size": image_size, "latent_dim": latent_dim, "mtcnn_crop_size": mtcnn_crop_size,
+        print("StyleGAN2 initialized with args: ", {"learning_rate_self": self.lr, image_size: image_size, "latent_dim": latent_dim, "mtcnn_crop_size": mtcnn_crop_size,
                                                     "fmap_max": fmap_max, "network_capacity": network_capacity, "attn_layers": attn_layers, "rank": rank})
 
         # startup apex mixed precision
