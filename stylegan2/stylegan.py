@@ -766,10 +766,10 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
         # init optimizers
         generator_params = list(self.G.parameters(
         )) + list(self.a_net.parameters()) + list(self.p_net.parameters())
-        self.G_opt = Adam(generator_params, lr=2e-4, betas=(0.5, 0.9))
+        self.G_opt = Adam(generator_params, lr=self.lr, betas=(0.5, 0.9))
         disc_params = list(self.D.parameters()) + \
             list(self.d_patch.parameters())
-        self.D_opt = Adam(disc_params, lr=2e-4 , betas=(0.5, 0.9)) #Removed ttur multiplication here
+        self.D_opt = Adam(disc_params, self.lr , betas=(0.5, 0.9)) #Removed ttur multiplication here
 
         # init weights
         self._init_weights()
