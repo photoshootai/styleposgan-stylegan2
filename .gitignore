@@ -3,9 +3,6 @@
 # Learn more about .gitignore:
 #     https://www.atlassian.com/git/tutorials/saving-changes/gitignore
 
-# Node artifact files
-node_modules/
-dist/
 
 # Compiled Java class files
 *.class
@@ -15,16 +12,6 @@ dist/
 
 # Log files
 *.log
-
-# Package files
-*.jar
-
-# Maven
-target/
-dist/
-
-# JetBrains IDE
-.idea/
 
 # Unit test reports
 TEST*.xml
@@ -51,5 +38,15 @@ Thumbs.db
 #VSCode
 .vscode/
 
+#Styleposegan specific
+/data/*/
+/data/*.zip
 
-data/
+tb_logs/
+/test_ims 
+/checkpoints
+/wandb
+/results
+/fid
+/models/*/
+.ipynb_checkpoints/

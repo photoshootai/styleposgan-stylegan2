@@ -1,1 +1,2 @@
-from .stylegan import * #Generator, Discriminator, EMA, StyleVectorizer, AugWrapper
+from .stylegan import * 
+from .version import __version__
