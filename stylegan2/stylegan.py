@@ -1281,6 +1281,7 @@ class Trainer():
             if apply_path_penalty:
                 #TODO: Check whether adding path length is correct
                 pl_lengths = calc_pl_lengths(z_s_styles, I_dash_s) + calc_pl_lengths(z_s_styles, I_dash_s_to_t)
+
                 avg_pl_length = torch.mean(pl_lengths.detach())
 
                 if not is_empty(self.pl_mean):
@@ -1288,7 +1289,6 @@ class Trainer():
                     if not torch.isnan(pl_loss):
                         gen_loss = gen_loss + pl_loss
 
- 
 
             gen_loss = gen_loss / self.gradient_accumulate_every
             gen_loss.register_hook(raise_if_nan)
@@ -1405,8 +1405,10 @@ class Trainer():
         
         # regular
         size = min(batch_size, batch_size)
+
         generated_images_s = self.GAN.G(z_s_styles, noise, E_s)
         generated_images_t = self.GAN.G(z_s_styles, noise, E_t)
+
         generated_stack = torch.cat(
             (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images_s[:size], generated_images_t[:size]), dim=0)
        
@@ -1417,6 +1419,7 @@ class Trainer():
         self.track(images, "generations_regular")
 
         # moving averages
+
 
         generated_images_s = self.GAN.GE(z_s_styles, noise, E_s)
         generated_images_t = self.GAN.GE(z_s_styles, noise, E_t)
@@ -1429,28 +1432,6 @@ class Trainer():
         images = wandb.Image(save_path, caption="Generations EMA I_dash_s_to_t")
         self.track(images, "generations_ema")
 
-        """
-        Don't need mixed regularities
-        """
-        # # mixing regularities
-
-        # def tile(a, dim, n_tile):
-        #     init_dim = a.size(dim)
-        #     repeat_idx = [1] * a.dim()
-        #     repeat_idx[dim] = n_tile
-        #     a = a.repeat(*(repeat_idx))
-        #     order_index = torch.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)])).cuda(self.rank)
-        #     return torch.index_select(a, dim, order_index)
-
-        # nn = noise(num_rows, latent_dim, device=self.rank)
-        # tmp1 = tile(nn, 0, num_rows)
-        # tmp2 = nn.repeat(num_rows, 1)
-
-        # tt = int(num_layers / 2)
-        # mixed_latents = [(tmp1, tt), (tmp2, num_layers - tt)]
-
-        # generated_images = self.generate_truncated(self.GAN.GE, mixed_latents, n, )
-        # torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}-mr.{ext}'), nrow=num_rows)
 
     @torch.no_grad()
     def calculate_fid(self, num_batches):
