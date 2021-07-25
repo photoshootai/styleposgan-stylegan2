@@ -164,11 +164,11 @@ def create_texture_spliced_dataset(pruned_pairs):
     for src, _ in pruned_pairs:
         assert all(map(os.path.isfile, starmap(os.path.join, zip(new_img_dirs, repeat(src))))), f'Missing file {src}'
 
-    # for a, b in pruned_pairs:
-    #     print(a, b)
-    #     Image.open(img_dirs[0] + "/" + a).show()
-    #     Image.open(img_dirs[0] + "/" + b).show()
-    #     input("Press enter for next")
+    for a, b in pruned_pairs:
+        print(a, b)
+        Image.open(img_dirs[0] + "/" + a).show()
+        Image.open(img_dirs[0] + "/" + b).show()
+        input("Press enter for next")
 
 
 
