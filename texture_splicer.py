@@ -147,17 +147,17 @@ def create_texture_spliced_dataset(pruned_pairs):
     
     new_f_names = list()
 
-    # save_st_w_dirs = partial(save_s_t_pair, img_dirs=img_dirs, new_img_dirs=new_img_dirs)
-    # with Pool(NUM_CORES) as P:
-    #     P.map(save_st_w_dirs, pruned_pairs, chunksize=100)
+    save_st_w_dirs = partial(save_s_t_pair, img_dirs=img_dirs, new_img_dirs=new_img_dirs)
+    with Pool(NUM_CORES) as P:
+        P.map(save_st_w_dirs, pruned_pairs,chunksize=50)
     # print(tot)
 
-    for src, targ in pruned_pairs:
-        copy2(os.path.join(img_dirs[0], src),  os.path.join(new_img_dirs[0], src))
-        copy2(os.path.join(img_dirs[1], targ),  os.path.join(new_img_dirs[1], src))
-        save_image(get_spliced_face_and_hands_on_target(os.path.join(img_dirs[2], src), os.path.join(img_dirs[2], targ)), os.path.join(new_img_dirs[2], src))
-        copy2(os.path.join(img_dirs[0], targ),  os.path.join(new_img_dirs[-1], src))
-        new_f_names.append(src)
+    # for src, targ in pruned_pairs:
+    #     copy2(os.path.join(img_dirs[0], src),  os.path.join(new_img_dirs[0], src))
+    #     copy2(os.path.join(img_dirs[1], targ),  os.path.join(new_img_dirs[1], src))
+    #     save_image(get_spliced_face_and_hands_on_target(os.path.join(img_dirs[2], src), os.path.join(img_dirs[2], targ)), os.path.join(new_img_dirs[2], src))
+    #     copy2(os.path.join(img_dirs[0], targ),  os.path.join(new_img_dirs[-1], src))
+    #     new_f_names.append(src)
     
     print('n_src_im', len(os.listdir(new_img_dirs[0])))
         
