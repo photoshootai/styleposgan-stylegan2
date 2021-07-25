@@ -7,7 +7,7 @@ from tqdm import tqdm
 from math import floor, log2
 
 
-from random import random
+from random import random, sample
 from shutil import rmtree
 from functools import partial
 import multiprocessing
@@ -45,6 +45,8 @@ from datasets import DeepFashionDataset
 from models import ANet, PNet
 
 from losses import VGG16Perceptual, FaceIDLoss
+
+import torch.nn.functional as F
 
 # torch.autograd.set_detect_anomaly(True)
 import wandb
@@ -342,6 +344,17 @@ def gen_hinge_loss(fake, real):
 def hinge_loss(real, fake):
     return (F.relu(1 + real) + F.relu(1 - fake)).mean()
 
+def d_logistic_loss(real_pred, fake_pred):
+    real_loss = F.softplus(-real_pred)
+    fake_loss = F.softplus(fake_pred)
+
+    return real_loss.mean() + fake_loss.mean()
+
+def g_nonsaturating_loss(fake_pred):
+    loss = F.softplus(-fake_pred).mean()
+
+    return loss
+
 
 def dual_contrastive_loss(real_logits, fake_logits):
     device = real_logits.device
@@ -371,9 +384,9 @@ class AugWrapper(nn.Module):
         self.D = D
 
     def forward(self, images, prob=0., types=[], detach=False):
-        if random() < prob:
-            images = random_hflip(images, prob=0.5)
-            images = DiffAugment(images, types=types)
+        # if random() < prob:
+        #     images = random_hflip(images, prob=0.5)
+        #     images = DiffAugment(images, types=types)
 
         if detach:
             images = images.detach()
@@ -482,60 +495,45 @@ class Conv2DMod(nn.Module):
 
 
 class GeneratorBlock(nn.Module):
-    def __init__(self, latent_dim, input_channels, filters, upsample=True, upsample_rgb=True, rgba=False):
+    def __init__(self, latent_dim, input_channels, filters, upsample = True, upsample_rgb = True, rgba = False):
         super().__init__()
-        self.upsample = nn.Upsample(
-            scale_factor=2, mode='bilinear', align_corners=False) if upsample else None
+        self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False) if upsample else None
 
         self.to_style1 = nn.Linear(latent_dim, input_channels)
         self.to_noise1 = nn.Linear(1, filters)
         self.conv1 = Conv2DMod(input_channels, filters, 3)
-
+        
         self.to_style2 = nn.Linear(latent_dim, filters)
         self.to_noise2 = nn.Linear(1, filters)
         self.conv2 = Conv2DMod(filters, filters, 3)
 
         self.activation = leaky_relu()
         self.to_rgb = RGBBlock(latent_dim, filters, upsample_rgb, rgba)
-        #print("GeneratorBlock has been inited")
 
     def forward(self, x, prev_rgb, istyle, inoise):
-        #print("----Gen Block----")
-        #print("X Dim is " +  str(x.size()))
         if exists(self.upsample):
             x = self.upsample(x)
-            #print("X Dim after upsampling " + str(x.size()))
-
-        # print("inoise size and device is", inoise.size(), inoise.device)
 
         inoise = inoise[:, :x.shape[2], :x.shape[3], :]
+        noise1 = self.to_noise1(inoise).permute((0, 3, 2, 1))
+        noise2 = self.to_noise2(inoise).permute((0, 3, 2, 1))
 
-        #print("Noise 1 before permutation is: ", inoise.shape)
-        noise1 = self.to_noise1(inoise).permute(
-            (0, 3, 1, 2))  # was earlier ((0, 3, 2, 1))
-        #print("Noise1 shape is " + str(noise1.size()))
-
-        noise2 = self.to_noise2(inoise).permute(
-            (0, 3, 1, 2))  # was earlier ((0, 3, 2, 1))
-
+        # print("X Size: ", x.size())
+        # print("Noise 1 Size: ", noise1.size())
         style1 = self.to_style1(istyle)
         x = self.conv1(x, style1)
-
-        #print("While adding, X dim after conv1 is " + str(x.size()))
-        #print("While adding, Noise1 is " + str(noise1.size()))
         x = self.activation(x + noise1)
 
+        # print("X Size: ", x.size())
+        # print("Noise 2 Size: ", noise1.size())
+        # print("-----")
         style2 = self.to_style2(istyle)
         x = self.conv2(x, style2)
-
-        # print("While adding, X dim after conv2 is " + str(x.size()))
-        # print("While adding, Noise2 is " + str(noise2.size()))
         x = self.activation(x + noise2)
 
         rgb = self.to_rgb(x, prev_rgb, istyle)
-
-        #print("X dim at the end of Gen Block is: " + str(x.size()))
         return x, rgb
+
 
 
 class DiscriminatorBlock(nn.Module):
@@ -570,46 +568,43 @@ class DiscriminatorBlock(nn.Module):
         # print("X after last + res and 1/sqrt is", x.size())
         return x
 
-
 class Generator(nn.Module):
-    # Modified Generator to take Encoded tensor or None as an input
-    def __init__(self, image_size, latent_dim, network_capacity=16, transparent=False, attn_layers=[], fmap_max=512):
+    def __init__(self, image_size, latent_dim, network_capacity = 16, transparent = False, attn_layers = [], no_const = False, fmap_max = 512):
         super().__init__()
         self.image_size = image_size
         self.latent_dim = latent_dim
+        
+        self.num_layers = 4#int(log2(image_size) - 1)
 
-        # First block is now upsampling: so 1 be non-upsamling and the remaining 4 will be
-        # This will alwayus be 4 as discussed, may need to make this into a hyperparam? #int(log2(image_size) - 1))
-        self.num_layers = 5
+        # filters = [network_capacity * (2 ** (i + 1)) for i in range(self.num_layers)][::-1]
 
-        # Does not apply anymore #Changed 2 ** (i + 1) -> 2 ** (i + 2) to filters of 512, 256, 128, 64
-        # Now filters = [512, 256, 128, 64, 32]
-        filters = [network_capacity * (2 ** (i + 1))
-                   for i in range(self.num_layers)][::-1]
+        # set_fmap_max = partial(min, fmap_max)
+        # filters = list(map(set_fmap_max, filters))
+        # init_channels = filters[0]
+        # filters = [init_channels, *filters]
 
-        # fmap_max bounds the maximum size of the first filter
-        set_fmap_max = partial(min, fmap_max)
-        filters = list(map(set_fmap_max, filters))
-        init_channels = filters[0]
-        filters = [init_channels, *filters]
-        in_out_pairs = zip(filters[:-1], filters[1:])
+        # in_out_pairs = zip(filters[:-1], filters[1:])
+        # print("In out pairs: ", list(in_out_pairs))
+        # self.no_const = no_const
 
         # if no_const:
         #     self.to_initial_block = nn.ConvTranspose2d(latent_dim, init_channels, 4, 1, 0, bias=False)
         # else:
         #     self.initial_block = nn.Parameter(torch.randn((1, init_channels, 4, 4)))
 
-        self.initial_conv = nn.Conv2d(filters[0], filters[0], 3, padding=1)
+        initial_filter_size = 512
+        self.initial_conv = nn.Conv2d(initial_filter_size, initial_filter_size, 3, padding=1)
         self.blocks = nn.ModuleList([])
         self.attns = nn.ModuleList([])
 
+        in_out_pairs = [(512, 256), (256, 128), (128, 64), (64, 32)]
+
         for ind, (in_chan, out_chan) in enumerate(in_out_pairs):
             not_first = ind != 0
-            not_last = ind != (self.num_layers - 1)
+            not_last = ind != 3#(self.num_layers - 1)
             num_layer = self.num_layers - ind
 
-            attn_fn = attn_and_ff(
-                in_chan) if num_layer in attn_layers else None
+            attn_fn = attn_and_ff(in_chan) #if num_layer in attn_layers else None
 
             self.attns.append(attn_fn)
 
@@ -617,50 +612,41 @@ class Generator(nn.Module):
                 latent_dim,
                 in_chan,
                 out_chan,
-                upsample=not_first,
-                upsample_rgb=not_last,
-                rgba=transparent
+                upsample = True,
+                upsample_rgb = not_last,
+                rgba = transparent
             )
-
             self.blocks.append(block)
 
         print("Generator Initialized with: ", {"image_size": self.image_size, "latent_dim": self.latent_dim, "num_blocks": len(self.blocks),
-                                               "attn_layers": len(self.attns)
-                                               })
+                                        "attn_layers": len(self.attns)
+                                        })
 
-    # Added s_input as an additional argument to forward
-
-    def forward(self, z_inputs, input_noise, s_input):
-        batch_size = z_inputs.shape[0]  # perhaps should be s_input.shape[0]
+    def forward(self, styles, input_noise, s_input):
+        batch_size = styles.shape[0]
         image_size = self.image_size
 
-        #print("Starting forward pass: ")
-        #print("Batch size is " + str(batch_size))
-        #print("Image size is " + str(image_size))
+        # if self.no_const:
+        #     avg_style = styles.mean(dim=1)[:, :, None, None]
+        #     x = self.to_initial_block(avg_style)
+        # else:
+        #     x = self.initial_block.expand(batch_size, -1, -1, -1)
+
 
         x = s_input
-        # print("s_input is: " + str(s_input.size()))
+
         rgb = None
-        # print("Z_inputs are: ", z_inputs.size())
-        z_inputs = z_inputs.transpose(0, 1)  # Change (x, y, z) to (y, x, z)
-
-        #print("Initial Conv Dims is: " + str(self.initial_conv))
+        styles = styles.transpose(0, 1)
         x = self.initial_conv(x)
-        #print("X dim after convolution is: " + str(x.size()))
 
-        count = 0
-        # print("Zipped: ", len(z_inputs))
-        #print("z_input length is " , len(z_inputs), ", self.blocks length is ", len(self.blocks), ", self.attns length is ", len(self.attns))
-        for z_input, block, attn in zip(z_inputs, self.blocks, self.attns):
-            count += 1
+        for style, block, attn in zip(styles, self.blocks, self.attns):
             if exists(attn):
-                # print("X dim before attention" + str(x.size()))
                 x = attn(x)
-                # print("X dim after attention" + str(x.size()))
-            x, rgb = block(x, rgb, z_input, input_noise)
 
-        # print(f"Generator forwarded through {count} blocks")
+            x, rgb = block(x, rgb, style, input_noise)
+
         return rgb
+
 
 
 class Discriminator(nn.Module):
@@ -734,16 +720,16 @@ class Discriminator(nn.Module):
         x = self.to_logit(x)
 
         #print("quantize_loss ", quantize_loss)
-        return x, quantize_loss  # Earlier was squeezed, we changed to x.squeeze(), quantize_loss
+        return x.squeeze(), quantize_loss  # Earlier was squeezed, we changed to x.squeeze(), quantize_loss
 
 
 class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
-    def __init__(self, image_size, latent_dim=2048, mtcnn_crop_size=160, fmap_max=512, style_depth=8, network_capacity=16, transparent=False, fp16=False, cl_reg=False, steps=1, lr=1e-4, ttur_mult=2, fq_layers=[], fq_dict_size=256, attn_layers=[], no_const=False, lr_mlp=0.1, rank=0):
+    def __init__(self, image_size, latent_dim=2048, mtcnn_crop_size=80, fmap_max=512, style_depth=8, network_capacity=16, transparent=False, fp16=False, cl_reg=False, steps=1, lr=1e-4, ttur_mult=2, fq_layers=[], fq_dict_size=256, attn_layers=[], no_const=False, lr_mlp=0.1, rank=0):
         super().__init__()
         self.lr = lr
         self.steps = steps
         self.ema_updater = EMA(0.995)
-        self.mtcnn_crop_size = 160
+        self.mtcnn_crop_size = mtcnn_crop_size
 
         self.G = Generator(image_size, latent_dim, network_capacity,
                            transparent=transparent, attn_layers=attn_layers, fmap_max=fmap_max)
@@ -783,7 +769,7 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
         self.G_opt = Adam(generator_params, lr=self.lr, betas=(0.5, 0.9))
         disc_params = list(self.D.parameters()) + \
             list(self.d_patch.parameters())
-        self.D_opt = Adam(disc_params, lr=self.lr , betas=(0.5, 0.9)) #Removed ttur multiplication here
+        self.D_opt = Adam(disc_params, self.lr , betas=(0.5, 0.9)) #Removed ttur multiplication here
 
         # init weights
         self._init_weights()
@@ -791,7 +777,7 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
 
         self.cuda(rank)
 
-        print("StyleGAN2 initialized with args: ", {"image_size": image_size, "latent_dim": latent_dim, "mtcnn_crop_size": mtcnn_crop_size,
+        print("StyleGAN2 initialized with args: ", {"learning_rate_self": self.lr, image_size: image_size, "latent_dim": latent_dim, "mtcnn_crop_size": mtcnn_crop_size,
                                                     "fmap_max": fmap_max, "network_capacity": network_capacity, "attn_layers": attn_layers, "rank": rank})
 
         # startup apex mixed precision
@@ -840,14 +826,14 @@ def get_d_total_loss(I_t, I_dash_s_to_t, pred_real_1, pred_fake_1, pred_real_2, 
     patch_loss = get_patch_loss(I_dash_s_to_t, I_t, d_patch)
 
     d_total_loss = gan_d_loss_1 + gan_d_loss_2 + torch.mul(patch_loss, -1)  # DPatch will maximize patch_loss
-    return d_total_loss, patch_loss  # Patch Loss needs to go up
+    return d_total_loss, patch_loss, (gan_d_loss_1+gan_d_loss_2)  # Patch Loss needs to go up
 
 
 def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1, fake_output_2, real_output_2, vgg_model, face_id_model, d_patch_model, mtcnn_crop_size):
 
-    weight_l1 = 1.
-    weight_vgg = 1.
-    weight_face = 1.
+    weight_l1 = 7.
+    weight_vgg = 7.
+    weight_face = 7.
     weight_gan = 1.
     weight_patch = 1.
 
@@ -865,7 +851,7 @@ def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_outp
 
     g_loss_total = rec_loss_1 + rec_loss_2 + gan_g_loss_1 + gan_g_loss_2 + patch_loss
     
-    return g_loss_total, rec_loss_1, rec_loss_2, patch_loss
+    return g_loss_total, rec_loss_1, rec_loss_2, patch_loss, (gan_g_loss_1+gan_g_loss_2)
 
 
 class Trainer():
@@ -1005,7 +991,7 @@ class Trainer():
         self.rank = rank
         self.world_size = world_size
 
-        self.mtcnn_crop_size = 160
+        self.mtcnn_crop_size = 80 #Changed from 160 to 80
 
         h_params = {'image_size': self.image_size,
                     'network_capacity': self.network_capacity,
@@ -1081,10 +1067,20 @@ class Trainer():
     def config(self):
         return {'image_size': self.image_size, 'network_capacity': self.network_capacity, 'lr_mlp': self.lr_mlp, 'transparent': self.transparent, 'fq_layers': self.fq_layers, 'fq_dict_size': self.fq_dict_size, 'attn_layers': self.attn_layers, 'no_const': self.no_const}
 
-    def set_data_src(self, folder, overfit):
+    def set_data_src(self, folder, overfit, subset):
 
         self.dataset = DeepFashionDataset(
             folder, self.image_size, transparent=self.transparent, aug_prob=self.dataset_aug_prob)
+        
+        #If Subset command line option
+        if subset is not None: #subset = int
+            full_dataset_len = len(self.dataset)
+            assert subset <= full_dataset_len , "Subset Count should be <= than count of full dataset"
+            subset_indices = sample(range(0, len(self.dataset)), subset)
+            self.dataset = torch.utils.data.Subset(self.dataset, subset_indices)
+            assert len(self.dataset) <= full_dataset_len, "Generated subset count should be <= than count of full dataset"
+            print("Taking Subset for count: ", len(self.dataset))
+        
         num_workers = num_workers = default(
             self.num_workers, NUM_CORES if not self.is_ddp else 0)
         sampler = DistributedSampler(
@@ -1109,7 +1105,10 @@ class Trainer():
             print(
                 f'autosetting augmentation probability to {round(self.aug_prob * 100)}%')
 
+
     def train(self):
+        if self.steps == 0:
+            print("******TRAINING WITH REAL TRAINING LOOP *******")
         assert exists(
             self.loader), 'You must first initialize the data source with `.set_data_src(<folder of images>)`'
 
@@ -1120,6 +1119,10 @@ class Trainer():
         self.GAN.train()
         total_disc_loss = torch.tensor(0.).cuda(self.rank)
         total_gen_loss = torch.tensor(0.).cuda(self.rank)
+
+        d_gan_losses_to_track = torch.tensor(0.).cuda(self.rank)
+        g_gan_losses_to_track = torch.tensor(0.).cuda(self.rank)
+        
 
         batch_size = math.ceil(self.batch_size / self.world_size)
 
@@ -1149,17 +1152,6 @@ class Trainer():
 
         backwards = partial(loss_backwards, self.fp16)
 
-        # setup losses
-
-        if not self.dual_contrast_loss:
-            D_loss_fn = hinge_loss
-            G_loss_fn = gen_hinge_loss
-            G_requires_reals = False
-        else:
-            D_loss_fn = dual_contrastive_loss
-            G_loss_fn = dual_contrastive_loss
-            G_requires_reals = True
-
         # train discriminator
 
         avg_pl_length = self.pl_mean
@@ -1177,13 +1169,20 @@ class Trainer():
             I_t = I_t.cuda(self.rank)
             T_pose_map = T_pose_map.cuda(self.rank)
 
+
+
             # Get encodings
             E_s = p_net(S_pose_map)
             E_t = p_net(T_pose_map)
-            z_s = a_net(S_texture_map).expand(-1, num_layers, -1)
+            z_s_1d = a_net(S_texture_map)
 
+
+            z_s_def = [(z_s_1d, num_layers)]
+            z_s_styles = styles_def_to_tensor(z_s_def)
+            
+        
             # Generate I_dash_s
-            I_dash_s = G(z_s, noise, E_s)  # I_dash_s
+            I_dash_s = G(z_s_styles, noise, E_s)  # I_dash_s
             fake_output_1, fake_q_loss_1 = D_aug(
                 I_dash_s.clone().detach(), detach=True, **aug_kwargs)
 
@@ -1194,7 +1193,7 @@ class Trainer():
             fake_output_loss_1 = fake_output_1
 
             # Generate I_dash_to_t
-            I_dash_s_to_t = G(z_s, noise, E_t)
+            I_dash_s_to_t = G(z_s_styles, noise, E_t)
             fake_output_2, fake_q_loss_2 = D_aug(
                 I_dash_s_to_t.clone().detach(), detach=True, **aug_kwargs)
 
@@ -1205,42 +1204,19 @@ class Trainer():
             real_output_loss_2 = real_output_2
             fake_output_loss_2 = fake_output_2
 
-            if self.rel_disc_loss:
-                real_output_loss_1 = real_output_loss_1 - \
-                    fake_output_1.mean()  # does this need brackets?
-                fake_output_loss_1 = fake_output_loss_1 - real_output_1.mean()
-
-                real_output_loss_2 = real_output_loss_2 - fake_output_2.mean()
-                fake_output_loss_2 = fake_output_loss_2 - real_output_2.mean()
 
             # divergence = D_loss_fn(real_output_loss, fake_output_loss)
-            divergence, patch_loss_to_track = get_d_total_loss(I_t, I_dash_s_to_t, real_output_loss_1,
+            divergence, patch_loss_to_track, d_gan_losses_added = get_d_total_loss(I_t, I_dash_s_to_t, real_output_loss_1,
                                                                fake_output_loss_1, real_output_loss_2, fake_output_loss_2, d_patch)
             disc_loss = divergence
 
-            if self.has_fq:
-                quantize_loss = (fake_q_loss_1 + real_q_loss_1).mean()
-                self.q_loss = float(quantize_loss.detach().item())
-
-                disc_loss = disc_loss + quantize_loss
-
             if apply_gradient_penalty:
-                gp = gradient_penalty(I_s, real_output_1)
-                self.last_gp_loss = gp.clone().detach().item()  # remove item
+                gp1 = gradient_penalty(I_s, real_output_1)
+                gp2 = gradient_penalty(I_t, real_output_2)
+
+                self.last_gp_loss = gp1.clone().detach().item() + gp2.clone().detach().item()  # remove item
                 self.track(self.last_gp_loss, 'GP')
-                disc_loss = disc_loss + gp
-
-            if self.has_fq:
-                quantize_loss = (fake_q_loss_2 + real_q_loss_2).mean()
-                self.q_loss = float(quantize_loss.detach().item())
-
-                disc_loss = disc_loss + quantize_loss
-
-            if apply_gradient_penalty:
-                gp = gradient_penalty(I_t, real_output_2)
-                self.last_gp_loss = gp.clone().detach().item()
-                self.track(self.last_gp_loss, 'GP')
-                disc_loss = disc_loss + gp
+                disc_loss = disc_loss + gp1 + gp2
 
             disc_loss = disc_loss / self.gradient_accumulate_every
             disc_loss.register_hook(raise_if_nan)
@@ -1251,11 +1227,13 @@ class Trainer():
             patch_loss_to_track = patch_loss_to_track + \
                 torch.div(patch_loss_to_track.detach(),
                           self.gradient_accumulate_every)
+            d_gan_losses_to_track = d_gan_losses_to_track + torch.div(d_gan_losses_added.detach(), self.gradient_accumulate_every)
 
         self.d_loss = float(total_disc_loss.item())
         if (self.steps % 5 == 0):
             self.track(self.d_loss, 'D')
             self.track(patch_loss_to_track, 'DPatch')
+            self.track(d_gan_losses_to_track, 'D_GAN_Losses_Added')
 
         self.GAN.D_opt.step()
 
@@ -1277,66 +1255,39 @@ class Trainer():
             # Get encodings
             E_s = p_net(S_pose_map)
             E_t = p_net(T_pose_map)
-            z_s = a_net(S_texture_map).expand(-1, num_layers, -1)
+            z_s_1d = a_net(S_texture_map)
 
-            I_dash_s = G(z_s, noise, E_s)  # I_dash_s
+
+            z_s_def = [(z_s_1d, num_layers)]
+            z_s_styles = styles_def_to_tensor(z_s_def)
+
+            I_dash_s = G(z_s_styles, noise, E_s)  # I_dash_s
             fake_output_1, _ = D_aug(I_dash_s, **aug_kwargs)
             fake_output_loss_1 = fake_output_1
 
             real_output_1 = None
 
-            I_dash_s_to_t = G(z_s, noise, E_t)  # I_dash_s
+            I_dash_s_to_t = G(z_s_styles, noise, E_t)  # I_dash_s
             fake_output_2, _ = D_aug(I_dash_s_to_t, **aug_kwargs)
             fake_output_loss_2 = fake_output_2
 
             real_output_2 = None
 
-            if G_requires_reals:
-                image_batch_I_s = I_s
-                real_output_1, _ = D_aug(
-                    image_batch_I_s, detach=True, **aug_kwargs)
-                real_output_1 = real_output_1.detach()
-
-                image_batch_I_t = I_t
-                real_output_2, _ = D_aug(
-                    image_batch_I_t, detach=True, **aug_kwargs)
-                real_output_2 = real_output_2.detach()
-
-            if self.top_k_training:
-                epochs = (self.steps * batch_size *
-                          self.gradient_accumulate_every) / len(self.dataset)
-                k_frac = max(self.generator_top_k_gamma **
-                             epochs, self.generator_top_k_frac)
-                k = math.ceil(batch_size * k_frac)
-
-                if k != batch_size:
-                    fake_output_loss_1, _ = fake_output_loss_1.topk(
-                        k=k, largest=False)
-                    fake_output_loss_2, _ = fake_output_loss_2.topk(
-                        k=k, largest=False)
-
             # loss = G_loss_fn(fake_output_loss, real_output)
-            loss, rec_loss_1, rec_loss_2, patch_loss = get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1,
+            loss, rec_loss_1, rec_loss_2, patch_loss, g_gan_losses_added = get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1,
                                                                         fake_output_2, real_output_2, vgg_model, face_id_model, d_patch, mtcnn_crop_size)
             gen_loss = loss
 
             if apply_path_penalty:
-                #w.r.t I_dash_s
-                pl_lengths = calc_pl_lengths(z_s, I_dash_s) +  calc_pl_lengths(z_s, I_dash_s_to_t)
+                #TODO: Check whether adding path length is correct
+                pl_lengths = calc_pl_lengths(z_s_styles, I_dash_s) + calc_pl_lengths(z_s_styles, I_dash_s_to_t)
+
                 avg_pl_length = torch.mean(pl_lengths.detach())
 
                 if not is_empty(self.pl_mean):
                     pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
                     if not torch.isnan(pl_loss):
                         gen_loss = gen_loss + pl_loss
-
-                # #w.r.t I_dash_to_t
-                # pl_lengths = calc_pl_lengths(z_s, I_dash_s_to_t)
-                # avg_pl_length = torch.mean(pl_lengths.detach())
-                # if not is_empty(self.pl_mean):
-                #     pl_loss2 = ((pl_lengths - self.pl_mean) ** 2).mean()
-                #     if not torch.isnan(pl_loss):
-                #         gen_loss = gen_loss + pl_loss2
 
 
             gen_loss = gen_loss / self.gradient_accumulate_every
@@ -1355,12 +1306,17 @@ class Trainer():
                 torch.div(patch_loss.detach(),
                           self.gradient_accumulate_every)
 
+            g_gan_losses_to_track = g_gan_losses_to_track + \
+                torch.div(g_gan_losses_added.detach(),
+                          self.gradient_accumulate_every)
+
         self.g_loss = float(total_gen_loss.item())
         if (self.steps % 5 == 0):
             self.track(self.g_loss, 'G')
             self.track(rec_loss_1, 'RecLoss1')
             self.track(rec_loss_2, 'RecLoss2')
             self.track(patch_loss, 'GPatch')
+            self.track(g_gan_losses_to_track, 'G_GAN_Losses_Added')
 
         self.GAN.G_opt.step()
 
@@ -1436,7 +1392,10 @@ class Trainer():
         # Get encodings
         E_s = self.GAN.p_net(S_pose_map)
         E_t = self.GAN.p_net(T_pose_map)
-        z_s = self.GAN.a_net(S_texture_map).expand(-1, num_layers, -1)
+        z_s_1d = self.GAN.a_net(S_texture_map)
+
+        z_s_def = [(z_s_1d, num_layers)]
+        z_s_styles = styles_def_to_tensor(z_s_def)
 
         noise = image_noise(batch_size, image_size, device=self.rank)
 
@@ -1446,8 +1405,10 @@ class Trainer():
         
         # regular
         size = min(batch_size, batch_size)
-        generated_images_s = self.GAN.G(z_s, noise, E_s) #self.generate_truncated(self.GAN.G, z_s, noise, E_s)
-        generated_images_t = self.GAN.G(z_s, noise, E_t)
+
+        generated_images_s = self.GAN.G(z_s_styles, noise, E_s)
+        generated_images_t = self.GAN.G(z_s_styles, noise, E_t)
+
         generated_stack = torch.cat(
             (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images_s[:size], generated_images_t[:size]), dim=0)
        
@@ -1459,8 +1420,10 @@ class Trainer():
 
         # moving averages
 
-        generated_images_s = self.GAN.GE(z_s, noise, E_s) #self.generate_truncated(self.GAN.G, z_s, noise, E_s)
-        generated_images_t = self.GAN.GE(z_s, noise, E_t)
+
+        generated_images_s = self.GAN.GE(z_s_styles, noise, E_s)
+        generated_images_t = self.GAN.GE(z_s_styles, noise, E_t)
+
         generated_stack = torch.cat(
             (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images_s[:size], generated_images_t[:size]), dim=0)
         save_path = str(self.results_dir / self.name / f'{str(num)}-ema.{ext}')
@@ -1469,28 +1432,6 @@ class Trainer():
         images = wandb.Image(save_path, caption="Generations EMA I_dash_s_to_t")
         self.track(images, "generations_ema")
 
-        """
-        Don't need mixed regularities
-        """
-        # # mixing regularities
-
-        # def tile(a, dim, n_tile):
-        #     init_dim = a.size(dim)
-        #     repeat_idx = [1] * a.dim()
-        #     repeat_idx[dim] = n_tile
-        #     a = a.repeat(*(repeat_idx))
-        #     order_index = torch.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)])).cuda(self.rank)
-        #     return torch.index_select(a, dim, order_index)
-
-        # nn = noise(num_rows, latent_dim, device=self.rank)
-        # tmp1 = tile(nn, 0, num_rows)
-        # tmp2 = nn.repeat(num_rows, 1)
-
-        # tt = int(num_layers / 2)
-        # mixed_latents = [(tmp1, tt), (tmp2, num_layers - tt)]
-
-        # generated_images = self.generate_truncated(self.GAN.GE, mixed_latents, n, )
-        # torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}-mr.{ext}'), nrow=num_rows)
 
     @torch.no_grad()
     def calculate_fid(self, num_batches):
@@ -1534,7 +1475,11 @@ class Trainer():
 
         # Get encodings
         E_t = self.GAN.p_net(T_pose_map)
-        z_s = self.GAN.a_net(S_texture_map).expand(-1, num_layers, -1)
+        z_s_1d = self.GAN.a_net(S_texture_map).expand(-1, num_layers, -1)
+
+        z_s_def = [(z_s_1d, num_layers)]
+        z_s_styles = styles_def_to_tensor(z_s_def)
+
 
         for batch_num in tqdm(range(num_batches), desc='calculating FID - saving generated'):
             # latents and noise
@@ -1542,7 +1487,7 @@ class Trainer():
 
             # moving averages
             generated_images = self.generate_truncated(
-                self.GAN.GE, z_s, noise, E_t)
+                self.GAN.GE, z_s_styles, noise, E_t)
 
             for j, image in enumerate(generated_images.unbind(0)):
                 torchvision.utils.save_image(image, str(

@@ -17,4 +17,4 @@ gdown https://drive.google.com/uc?id=1CbelD3k53Yq3uX0DRKH5Lfo5W8_6uYPh
 unzip -q 'DeepFashionWomenOnly.zip' -d './styleposgan-stylegan2/data'
 
 #Run Training
-python train.py --name spgan-28-june --data ./data/DeepFashionWithFace --models_dir ./checkpoints/ --results_dir ./results/ --multi-gpus --image-size 256 --batch-size 24 --gradient-accumulate-every 2 --log
+python train.py --name spgan-28-june --data ./data/DeepFashionWithFace --models_dir ./checkpoints/ --results_dir ./results/ --image-size 256 --batch-size 16 --gradient-accumulate-every 1 --log
