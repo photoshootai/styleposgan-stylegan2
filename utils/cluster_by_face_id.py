@@ -1,5 +1,7 @@
 import torch
 import os
+
+from torchvision.transforms.transforms import ToPILImage
 from tqdm import tqdm
 import multiprocessing
 
@@ -17,7 +19,7 @@ from sklearn.manifold import TSNE
 from torch.utils.data import DataLoader
 from torchvision import datasets
 
-from torchvision.transforms import ToTensor
+from torchvision.transforms import ToTensor, ToPILImage
 
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -25,26 +27,44 @@ print(f'Running on device: {device}')
 
 NUM_CORES = multiprocessing.cpu_count()
 
+
+def show_image(t):
+    im = ToPILImage()(t)
+    im.show()
+
 def get_face_files_from_dir(dir):
-    file_names = [d.name for d in os.scandir(dir)]
+    file_names = [d.path for d in os.scandir(dir)]
     return file_names
 
 @lru_cache
 def get_embeddings(face_files):
 
-    margin = 80
+    margin = 0
     image_size = 160
 
     # Load face detector
-    mtcnn = MTCNN(keep_all=False, select_largest=False, post_process=False,
-                device=device, min_face_size=80,
-                margin=margin, image_size=image_size).eval()
-
+    mtcnn = MTCNN(keep_all=True, select_largest=True, post_process=True,
+                  min_face_size=10,
+                  margin=margin, image_size=image_size).eval()
+    
+# mtcnn = MTCNN(select_largest=True, device='cuda')
+# error_files = []
+# def has_face(f_path):
+#     img = Image.open(f_path)
+#     try:
+#         boxes, probs = mtcnn.detect(img)
+#         if (boxes is None) or probs[0] < 0.95:
+#             return 0, f_path
+#         return 1, None
+#     except:
+#         print('caught mtcnn error')
+#         error_files.append(f.path)
+#         return 0, f_path
     # Load facial recognition model
     resnet = InceptionResnetV1(pretrained='vggface2', device=device).eval()
 
     #Calculuate embeddings
-    tf_img = lambda i: ToTensor()(i)
+    tf_img = ToTensor()
     embeddings = lambda input: resnet(input)
     
     
@@ -53,8 +73,26 @@ def get_embeddings(face_files):
     list_embs = []
     with torch.no_grad():
         for face in tqdm(face_files):
-            # t = mtcnn(t)
-            e = embeddings(face).squeeze()
+            t = Image.open(face)#.to(device)
+            # print('im shape', t.shape)
+            b, p = mtcnn.detect(t)
+            # print(t.shape)
+            if not all(p) or not all(x is not None for x in b):
+                print('failed to compute', face)
+                list_embs.append(None)
+                continue
+            if not all(p) and p < 0.95:
+                print('not liukely to be a face', face)
+                list_embs.append(None)
+                continue
+            print('voxes', b, p)
+            x0, y0, x1, y1 = b[0]
+            t = tf_img(t)[:, int(y0):int(y1), int(x0):int(x1)]
+            # show_image(t)
+            # exit()
+                # t = torch.zeros()
+            # exit()
+            e = embeddings(t).squeeze()
             list_embs.append(e)
 
 
@@ -90,7 +128,7 @@ def run():
     dir = "./data/DeepFashionMenOnlyCleaned/SourceImages"
 
 
-    face_files = list(map(partial(os.path.join, dir), get_face_files_from_dir(dir)))
+    face_files = get_face_files_from_dir(dir) #list(map(partial(os.path.join, dir), get_face_files_from_dir(dir)))
     print(len(face_files))
 
     list_embs = get_embeddings(tuple(face_files))
