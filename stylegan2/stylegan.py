@@ -815,21 +815,20 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
         return x
 
 
-def get_d_total_loss(I_t, I_dash_s_to_t, pred_real_1, pred_fake_1, pred_real_2, pred_fake_2, d_patch):
+def get_d_total_loss(I_t, I_dash_s_to_t, pred_real_1, pred_fake_1, d_patch):
     # where d_patch is an nn.module
 
     # GAN_d_loss1
     gan_d_loss_1 = hinge_loss(pred_real_1, pred_fake_1)
-    # GAN_d_loss2
-    gan_d_loss_2 = hinge_loss(pred_real_2, pred_fake_2)
+
     # patch loss
     patch_loss = get_patch_loss(I_dash_s_to_t, I_t, d_patch)
 
-    d_total_loss = gan_d_loss_1 + gan_d_loss_2 + torch.mul(patch_loss, -1)  # DPatch will maximize patch_loss
-    return d_total_loss, patch_loss, (gan_d_loss_1+gan_d_loss_2)  # Patch Loss needs to go up
+    d_total_loss = gan_d_loss_1 +  torch.mul(patch_loss, -1)  # DPatch will maximize patch_loss
+    return d_total_loss, patch_loss, gan_d_loss_1  # Patch Loss needs to go up
 
 
-def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1, fake_output_2, real_output_2, vgg_model, face_id_model, d_patch_model, mtcnn_crop_size):
+def get_g_total_loss(I_t, I_double_dash, fake_output_1, real_output_1, vgg_model, face_id_model, d_patch_model, mtcnn_crop_size):
 
     weight_l1 = 7.
     weight_vgg = 7.
@@ -839,19 +838,14 @@ def get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_outp
 
     # GAN_d_loss1
     gan_g_loss_1 = weight_gan * gen_hinge_loss(fake_output_1, real_output_1)
-    # GAN_d_loss2
-    gan_g_loss_2 = weight_gan * gen_hinge_loss(fake_output_2, real_output_2)
 
-    patch_loss = weight_patch * get_patch_loss(I_dash_s_to_t, I_t, d_patch_model)
+    patch_loss = weight_patch * get_patch_loss(I_double_dash, I_t, d_patch_model)
 
-    rec_loss_1 = weight_l1 * get_l1_loss(I_dash_s, I_s) + weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s, I_s) + weight_face * get_face_id_loss(I_dash_s, I_s, face_id_model, crop_size=mtcnn_crop_size)
+    rec_loss_1 = weight_l1 * get_l1_loss(I_double_dash, I_t) + weight_vgg * get_perceptual_vgg_loss(vgg_model, I_double_dash, I_t) + weight_face * get_face_id_loss(I_double_dash, I_t, face_id_model, crop_size=mtcnn_crop_size)
 
-    rec_loss_2 = weight_l1 * get_l1_loss(I_dash_s_to_t, I_t) + weight_vgg * get_perceptual_vgg_loss(vgg_model, I_dash_s_to_t, I_t) + weight_face * get_face_id_loss(I_dash_s_to_t, I_t, face_id_model, crop_size=mtcnn_crop_size)
-
-
-    g_loss_total = rec_loss_1 + rec_loss_2 + gan_g_loss_1 + gan_g_loss_2 + patch_loss
+    g_loss_total = rec_loss_1 + gan_g_loss_1  + patch_loss
     
-    return g_loss_total, rec_loss_1, rec_loss_2, patch_loss, (gan_g_loss_1+gan_g_loss_2)
+    return g_loss_total, rec_loss_1, patch_loss, gan_g_loss_1
 
 
 class Trainer():
@@ -1162,61 +1156,46 @@ class Trainer():
             noise = image_noise(batch_size, image_size, device=self.rank)
 
             # Get batch inputs
-            (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
+            # (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
+            I_s, I_spliced_texture, I_t_pose, I_t = next(self.loader)
             I_s = I_s.cuda(self.rank)
-            S_pose_map = S_pose_map.cuda(self.rank)
-            S_texture_map = S_texture_map.cuda(self.rank)
+            I_spliced_texture = I_spliced_texture.cuda(self.rank)
+            I_t_pose = I_t_pose.cuda(self.rank)
             I_t = I_t.cuda(self.rank)
-            T_pose_map = T_pose_map.cuda(self.rank)
 
 
 
             # Get encodings
-            E_s = p_net(S_pose_map)
-            E_t = p_net(T_pose_map)
-            z_s_1d = a_net(S_texture_map)
+            E_t = p_net(I_t_pose)
+            z_spliced = a_net(I_spliced_texture)
 
 
-            z_s_def = [(z_s_1d, num_layers)]
-            z_s_styles = styles_def_to_tensor(z_s_def)
+            z_s_def = [(z_spliced, num_layers)]
+            z_spliced_styles = styles_def_to_tensor(z_s_def)
             
-        
-            # Generate I_dash_s
-            I_dash_s = G(z_s_styles, noise, E_s)  # I_dash_s
-            fake_output_1, fake_q_loss_1 = D_aug(
-                I_dash_s.clone().detach(), detach=True, **aug_kwargs)
-
-            I_s.requires_grad_()  # keep
-            real_output_1, real_q_loss_1 = D_aug(I_s, **aug_kwargs)
-
-            real_output_loss_1 = real_output_1
-            fake_output_loss_1 = fake_output_1
-
-            # Generate I_dash_to_t
-            I_dash_s_to_t = G(z_s_styles, noise, E_t)
-            fake_output_2, fake_q_loss_2 = D_aug(
-                I_dash_s_to_t.clone().detach(), detach=True, **aug_kwargs)
+            # Generate I''
+            I_double_dash = G(z_spliced_styles, noise, E_t)
+            fake_output_3, fake_q_loss_3 = D_aug(
+                I_double_dash.clone().detach(), detach=True, **aug_kwargs)
 
             I_t.requires_grad_()
             # opt params are for self.D instead os self.D_aug
-            real_output_2, real_q_loss_2 = D_aug(I_t, **aug_kwargs)
+            real_output_3, real_q_loss_3 = D_aug(I_t, **aug_kwargs)
 
-            real_output_loss_2 = real_output_2
-            fake_output_loss_2 = fake_output_2
+            real_output_loss_3 = real_output_3
+            fake_output_loss_3 = fake_output_3
 
 
-            # divergence = D_loss_fn(real_output_loss, fake_output_loss)
-            divergence, patch_loss_to_track, d_gan_losses_added = get_d_total_loss(I_t, I_dash_s_to_t, real_output_loss_1,
-                                                               fake_output_loss_1, real_output_loss_2, fake_output_loss_2, d_patch)
+            divergence, patch_loss_to_track, d_gan_losses_added = get_d_total_loss(I_t, I_double_dash, real_output_loss_3,fake_output_loss_3, d_patch)
             disc_loss = divergence
 
-            if apply_gradient_penalty:
-                gp1 = gradient_penalty(I_s, real_output_1)
-                gp2 = gradient_penalty(I_t, real_output_2)
 
-                self.last_gp_loss = gp1.clone().detach().item() + gp2.clone().detach().item()  # remove item
+            if apply_gradient_penalty:
+                gp3 = gradient_penalty(I_s, real_output_loss_3)
+
+                self.last_gp_loss = gp3.clone().detach().item()
                 self.track(self.last_gp_loss, 'GP')
-                disc_loss = disc_loss + gp1 + gp2
+                disc_loss = disc_loss + gp3
 
             disc_loss = disc_loss / self.gradient_accumulate_every
             disc_loss.register_hook(raise_if_nan)
@@ -1243,44 +1222,39 @@ class Trainer():
 
         for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[G, D_aug, a_net, p_net, d_patch]):
 
-            (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
+            I_s, I_spliced_texture, I_t_pose, I_t = next(self.loader)
             I_s = I_s.cuda(self.rank)
-            S_pose_map = S_pose_map.cuda(self.rank)
-            S_texture_map = S_texture_map.cuda(self.rank)
+            I_spliced_texture = I_spliced_texture.cuda(self.rank)
+            I_t_pose = I_t_pose.cuda(self.rank)
             I_t = I_t.cuda(self.rank)
-            T_pose_map = T_pose_map.cuda(self.rank)
+
 
             noise = image_noise(batch_size, image_size, device=self.rank)
 
             # Get encodings
-            E_s = p_net(S_pose_map)
-            E_t = p_net(T_pose_map)
-            z_s_1d = a_net(S_texture_map)
+            #E_s = p_net(S_pose_map)
+            E_t = p_net(I_t_pose)
+            z_spliced = a_net(I_spliced_texture)
 
 
-            z_s_def = [(z_s_1d, num_layers)]
-            z_s_styles = styles_def_to_tensor(z_s_def)
+            z_s_def = [(z_spliced, num_layers)]
+            z_spliced_styles = styles_def_to_tensor(z_s_def)
 
-            I_dash_s = G(z_s_styles, noise, E_s)  # I_dash_s
-            fake_output_1, _ = D_aug(I_dash_s, **aug_kwargs)
-            fake_output_loss_1 = fake_output_1
 
-            real_output_1 = None
+            #Generate I''
+            I_double_dash = G(z_spliced_styles,I_t_pose)
+            fake_output_3, _ = D_aug(I_double_dash, **aug_kwargs)
+            fake_output_loss_3 = fake_output_3
 
-            I_dash_s_to_t = G(z_s_styles, noise, E_t)  # I_dash_s
-            fake_output_2, _ = D_aug(I_dash_s_to_t, **aug_kwargs)
-            fake_output_loss_2 = fake_output_2
+            real_output_3 = None
 
-            real_output_2 = None
 
-            # loss = G_loss_fn(fake_output_loss, real_output)
-            loss, rec_loss_1, rec_loss_2, patch_loss, g_gan_losses_added = get_g_total_loss(I_s, I_t, I_dash_s, I_dash_s_to_t, fake_output_1, real_output_1,
-                                                                        fake_output_2, real_output_2, vgg_model, face_id_model, d_patch, mtcnn_crop_size)
+            #g_total_loss only takes I_t because for I_double_dash only thing we compare to is I_t
+            loss, rec_loss_1, patch_loss, g_gan_losses_added = get_g_total_loss(I_t, I_double_dash, fake_output_3, real_output_3, vgg_model, face_id_model, d_patch, mtcnn_crop_size)
             gen_loss = loss
 
             if apply_path_penalty:
-                #TODO: Check whether adding path length is correct
-                pl_lengths = calc_pl_lengths(z_s_styles, I_dash_s) + calc_pl_lengths(z_s_styles, I_dash_s_to_t)
+                pl_lengths = calc_pl_lengths(z_spliced_styles, I_double_dash)
 
                 avg_pl_length = torch.mean(pl_lengths.detach())
 
@@ -1314,7 +1288,6 @@ class Trainer():
         if (self.steps % 5 == 0):
             self.track(self.g_loss, 'G')
             self.track(rec_loss_1, 'RecLoss1')
-            self.track(rec_loss_2, 'RecLoss2')
             self.track(patch_loss, 'GPatch')
             self.track(g_gan_losses_to_track, 'G_GAN_Losses_Added')
 
@@ -1376,60 +1349,50 @@ class Trainer():
         image_size = self.GAN.G.image_size
         num_layers = self.GAN.G.num_layers
 
-        # Get batch inputs
-        batch = next(self.loader)
-        # show_batch(batch)
 
-        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = batch
+        I_s, I_spliced_texture, I_t_pose, I_t = next(self.loader)
         I_s = I_s.cuda(self.rank)
-        S_pose_map = S_pose_map.cuda(self.rank)
-        S_texture_map = S_texture_map.cuda(self.rank)
+        I_spliced_texture = I_spliced_texture.cuda(self.rank)
+        I_t_pose = I_t_pose.cuda(self.rank)
         I_t = I_t.cuda(self.rank)
-        T_pose_map = T_pose_map.cuda(self.rank)
 
         batch_size = I_t.shape[0]
 
         # Get encodings
-        E_s = self.GAN.p_net(S_pose_map)
-        E_t = self.GAN.p_net(T_pose_map)
-        z_s_1d = self.GAN.a_net(S_texture_map)
+        E_t = self.GAN.p_net(I_t_pose)
+        z_spliced = self.GAN.a_net(I_spliced_texture)
 
-        z_s_def = [(z_s_1d, num_layers)]
-        z_s_styles = styles_def_to_tensor(z_s_def)
+        z_s_def = [(z_spliced, num_layers)]
+        z_spliced_styles = styles_def_to_tensor(z_s_def)
 
         noise = image_noise(batch_size, image_size, device=self.rank)
 
         import torch.nn.functional as F
-        S_texture_map = F.interpolate(S_texture_map, size=256)
-        # S_texture_map = F.interpolae(S_texture_map, image_size=256)
+        I_spliced_texture = F.interpolate(I_spliced_texture, size=256)
+
         
-        # regular
+        # Regular Genrations
         size = min(batch_size, batch_size)
 
-        generated_images_s = self.GAN.G(z_s_styles, noise, E_s)
-        generated_images_t = self.GAN.G(z_s_styles, noise, E_t)
-
-        generated_stack = torch.cat(
-            (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images_s[:size], generated_images_t[:size]), dim=0)
+        generated_images = self.GAN.G(z_spliced_styles, noise, E_t)
+        generated_stack = torch.cat((I_s[:size], I_spliced_texture[:size], I_t_pose[:size], I_t[:size], generated_images[:size]), dim=0)
        
         save_path = str(self.results_dir / self.name / f'{str(num)}.{ext}')
         torchvision.utils.save_image(generated_stack, save_path, nrow=size)
 
-        images = wandb.Image(save_path, caption="Generations Regular I_dash_s")
+        images = wandb.Image(save_path, caption="Generations Regular I_double_dash")
         self.track(images, "generations_regular")
 
-        # moving averages
 
 
-        generated_images_s = self.GAN.GE(z_s_styles, noise, E_s)
-        generated_images_t = self.GAN.GE(z_s_styles, noise, E_t)
+        # EMA Generations
+        generated_images_ema = self.GAN.GE(z_spliced_styles, noise, E_t)
+        generated_stack = torch.cat((I_s[:size], I_spliced_texture[:size], I_t_pose[:size], I_t[:size], generated_images_ema[:size]), dim=0)
 
-        generated_stack = torch.cat(
-            (I_s[:size], S_pose_map[:size], S_texture_map[:size], I_t[:size], T_pose_map[:size], generated_images_s[:size], generated_images_t[:size]), dim=0)
         save_path = str(self.results_dir / self.name / f'{str(num)}-ema.{ext}')
         torchvision.utils.save_image(generated_stack, save_path, nrow=size)
 
-        images = wandb.Image(save_path, caption="Generations EMA I_dash_s_to_t")
+        images = wandb.Image(save_path, caption="Generations EMA I_double_dash")
         self.track(images, "generations_ema")
 
 
