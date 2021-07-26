@@ -103,6 +103,9 @@ def extract_prop(file_name: str, props: Set[str]={'model'}) -> Tuple[str]:
     mask = (1 if i in idxs else 0 for i in range(len(cat_map)))
     base_name = os.path.splitext(file_name)[0]
     match = re.match(r'([A-Z]+)\_(.+)\_(id)\_(\d+)\_(\d+)\_(\d+)\_(.+)', base_name)
+    if not match:
+        # print('no match', file_name)
+        return None
     return tuple(compress(match.groups(), mask))
 
 def filter_opt(opt, files, props):
@@ -112,7 +115,7 @@ def filter_opt(opt, files, props):
 def conditional_shuffle(files: Iterable[str], props: Set[str], n_threads: int=6, with_replacement=False) -> Iterable[Tuple[str]]:
     perm_func = partial(permutations, r=2) if not with_replacement else partial(product, repeat=2)
     extract = partial(extract_prop, props=props)
-    opts = set(extract(f) for f in files)
+    opts = set(extract(f) for f in files if extract(f))
     with Pool(n_threads) as P:
         groups = P.starmap(filter_opt, zip(opts, repeat(files), repeat(props)))
         pairs = P.map(perm_func, groups)
@@ -157,7 +160,7 @@ class DeepFashionDataset(Dataset):
             elif pair_method == 'P':
                 props = {'model'}
             elif pair_method == 'P_and_A':
-                props = {'model', 'clothing_id'}
+                props = {'model', 'clothing_category'}
             else:
                 raise Exception('Please ensure pair method is one of (\'random\' | \'P\' | \'P_and_A\')')  
         elif props:
