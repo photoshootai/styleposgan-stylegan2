@@ -1,6 +1,4 @@
-
 from PIL import Image
-from matplotlib.pyplot import imshow
 import numpy as np
 
 import multiprocessing
@@ -41,8 +39,15 @@ w2= -232
 
 to_tensor = transforms.ToTensor()
 
-def show_img(img):
-    imshow(np.asarray(img))
+
+def show_pruned_pairs(base_src_images_path, pruned_pairs):
+
+    for a, b in pruned_pairs:
+        print(a, b)
+        Image.open(base_src_images_path + "/" + a).show()
+        Image.open(base_src_images_path + "/" + b).show()
+        input("Press enter for next")
+
 
 def get_spliced_face_and_hands_on_target(face_tex_map, target_tex_map):
     face_tex_map = to_tensor(Image.open(face_tex_map))
@@ -164,26 +169,23 @@ def create_texture_spliced_dataset(pruned_pairs):
     for src, _ in pruned_pairs:
         assert all(map(os.path.isfile, starmap(os.path.join, zip(new_img_dirs, repeat(src))))), f'Missing file {src}'
 
-    for a, b in pruned_pairs:
-        print(a, b)
-        Image.open(img_dirs[0] + "/" + a).show()
-        Image.open(img_dirs[0] + "/" + b).show()
-        input("Press enter for next")
-
-
 
     print(f'Took {(time.time() - start):.4f} seconds to make pairs')
 
 def main():
     import pickle
 
-    pkl = './temp.pkl'
+    pkl = "./data/pairs_clothing_id_model_DeepFashionMenOnlyCleaned.pkl" #'./temp.pkl'
     if os.path.isfile(pkl):
         print('Pickle exists')
         with open(pkl, 'rb') as f:
             pruned_pairs = pickle.load(f)
         print(f"Pairs : {len(pruned_pairs)}")
-        
+
+        show_pruned_pairs("./data/DeepFashionMenOnlyCleaned/SourceImages", pruned_pairs)
+
+
+        exit()
     else:
         print('Pickle does not exist')
         data_dir = "./data/DeepFashionMenOnlyCleaned"
