@@ -868,7 +868,7 @@ class Trainer():
         ttur_mult=2,
         rel_disc_loss=False,
         num_workers=None,
-        save_every=500,
+        save_every=1000,
         evaluate_every=500,
         num_image_tiles=4,
         trunc_psi=0.6,
