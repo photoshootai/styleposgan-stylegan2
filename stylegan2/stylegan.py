@@ -483,12 +483,12 @@ class Conv2DMod(nn.Module):
 
         x = x.reshape(1, -1, h, w)
 
-        # _, _, *ws = weights.shape
-        ws = weights.shape[2:]
+        _, _, *ws = weights.shape
         weights = weights.reshape(b * self.filters, *ws)
 
         padding = self._get_same_padding(
             h, self.kernel, self.dilation, self.stride)
+        padding = padding if isinstance(padding, int) else padding.item()
         x = F.conv2d(x, weights, padding=padding, groups=b)
 
         x = x.reshape(-1, self.filters, h, w)
@@ -812,27 +812,40 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
     def reset_parameter_averaging(self):
         self.GE.load_state_dict(self.G.state_dict())
 
-    def forward(self, batch):
-        (I_s, P_s, A_s), (I_t, P_t) = batch
-        I_s = I_s.cuda(self.rank)
-        P_s = P_s.cuda(self.rank)
-        A_s = A_s.cuda(self.rank)
-        I_t = I_t.cuda(self.rank)
-        P_t = P_t.cuda(self.rank)
+    def forward(self, src, targ):
+        rank = 0
+        latent_dim = self.G.latent_dim
+        image_size = self.G.image_size
+        num_layers = self.G.num_layers
+
+        (I_s, P_s, A_s), (I_t, P_t) = src, targ #batch
+
+        I_s = I_s.cuda(rank)
+        P_s = P_s.cuda(rank)
+        A_s = A_s.cuda(rank)
+        I_t = I_t.cuda(rank)
+        P_t = P_t.cuda(rank)
 
         batch_size = I_t.shape[0]
 
         # Get encodings
-        E_s = self.GAN.p_net(P_s)
-        E_t = self.GAN.p_net(P_t)
-        z_s_1d = self.GAN.a_net(A_s)
+        E_s = self.p_net(P_s)
+        E_t = self.p_net(P_t)
+        z_s_1d = self.a_net(A_s)
 
         z_s_def = [(z_s_1d, num_layers)]
         z_s_styles = styles_def_to_tensor(z_s_def)
 
-        noise = image_noise(batch_size, image_size, device=self.rank)
+        noise = image_noise(batch_size, image_size, device=rank)
 
-        return self.GAN.GE(z_s_styles, noise, E_s)
+        I_dash_s = self.G(z_s_styles, noise, E_s)
+        I_dash_s_to_t = self.G(z_s_styles, noise, E_t)
+
+        I_dash_s_ema = self.GE(z_s_styles, noise, E_s)
+        I_dash_s_to_t_ema = self.GE(z_s_styles, noise, E_t)
+
+        return (torch.tensor(image_size), I_dash_s, I_dash_s_to_t,
+                I_dash_s_ema, I_dash_s_to_t_ema)
 
 
 def get_d_total_loss(I_t, I_dash_s_to_t, pred_real_1, pred_fake_1, pred_real_2, pred_fake_2, d_patch):

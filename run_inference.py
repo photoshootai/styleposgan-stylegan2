@@ -342,8 +342,8 @@ def main(src: str, targ: str,
             image_size=image_size[0]
         )
         model.load(load_from)
-        model = model.GAN.eval()
-        pair = next(iter(data_pairs.values()), empty)
+        # model = model.GAN
+        pair = list(data_pairs.values())[0]
         (I_s, P_s, A_s), (I_t, P_t, _) = pair
 
         I_s = I_s.unsqueeze(0).cuda()#, size=image_size)
@@ -352,8 +352,11 @@ def main(src: str, targ: str,
         I_t = I_t.unsqueeze(0).cuda()#, size=image_size)
         P_t = P_t.unsqueeze(0).cuda()#, size=image_size)
         sample_input = ((I_s, P_s, A_s), (I_t, P_t))
-        scripted_model = torch.jit.trace(model, sample_input)
+
+        scripted_model = torch.jit.trace(model.GAN, sample_input)
         scripted_model.save(model_path)
+        verb and print(f'model traced and saved to {model_path}! Exiting...')
+        exit()
 
     verb and print(f'loading latest scripted model from {model_path}')
     # model = ModelLoader(base_dir=os.path.split(model_dir)[0], name=model_name,
@@ -364,7 +367,7 @@ def main(src: str, targ: str,
     empty = (None, None)
     data_iter = iter(data_pairs.items())
     img, pair = next(data_iter, empty)
-    while img is not None and pair is not None:
+    while img is not None and pair:
         (I_s, P_s, A_s), (I_t, P_t, _) = pair
 
         I_s = I_s.unsqueeze(0).cuda()#, size=image_size)
@@ -375,7 +378,7 @@ def main(src: str, targ: str,
 
         (image_size, I_dash_s, I_dash_s_to_t, I_dash_s_ema,
          I_dash_s_to_t_ema) = model((I_s, P_s, A_s), (I_t, P_t))
-
+        image_size = image_size.item()
         A_s = F.interpolate(A_s, size=image_size)
 
         regular = torch.cat(
@@ -392,6 +395,7 @@ def main(src: str, targ: str,
 
         torchvision.utils.save_image(regular, reg_save_path, nrow=batch_size)
         torchvision.utils.save_image(ema, ema_save_path, nrow=batch_size)
+        verb and print(f'saved files - reg: {reg_save_path} and ema: {ema_save_path}')
         img, pair = next(data_iter, empty)
     
     # go back to previous directory
