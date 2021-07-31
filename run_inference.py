@@ -20,8 +20,8 @@ from tqdm import tqdm
 from UVTextureConverter import Atlas2Normal
 
 from datasets import DeepFashion as DF
-from models import ANet, PNet
-from stylegan2.stylegan import ModelLoader
+# from models import ANet, PNet
+# from stylegan2.stylegan import ModelLoader
 
 
 def run_densepose_network(source_img_dir: str, output_pkl: str,
@@ -202,8 +202,8 @@ def parse_args():
         help='directory to store outputs and temporary inference files'
     )
     parser.add_argument(
-        '--model_dir', type=str,
-        default=os.path.join('.', 'results', 'default'),
+        '--scripted_model_path', type=str,
+        default=os.path.join('.', 'checkpoints', f'scripted_model_1.0.0.pt'),
         help='path to model checkpoint directory'
     )
     parser.add_argument(
@@ -223,24 +223,39 @@ def parse_args():
         help='if batched, use batch_size for model forward'
     )
     parser.add_argument('-v', action='store_true', help='verbose output')
+    parser.add_argument('--save_model', action='store_true', help='save torchscript model')
+    parser.add_argument(
+        '--load_from', type=int, default=-1,
+        help='checkpoint number for model, use \'-1\' for latest'
+    )
+    parser.add_argument(
+        '--model_dir', type=str,
+        default=os.path.join('.', 'checkpoints', 'models', 'default'),
+        help='Only if --save_model!, path to model checkpoint directory, ' + \
+             'eg. \'./checkpoints/models/dev-fixes\' (not a path to a .pt file!)'
+    )
 
     args = parser.parse_args()
     image_size = (tuple(args.image_size[:2]) if len(args.image_size) >= 2
                   else (*args.image_size, *args.image_size))
-    return (args.source, args.target, args.outputs, args.model_dir,
-            args.densepose, image_size, args.batched, args.batch_size, args.v)
+    model_dir, name = os.path.split(args.model_dir)
+    base_dir = os.path.split(model_dir)[0]
+    return (args.source, args.target, args.outputs, args.scripted_model_path,
+            args.densepose, image_size, args.batched, args.batch_size, args.v,
+            args.save_model, args.load_from, base_dir, name)
 
 
 def main(src: str, targ: str,
          out_dir: str=os.path.join('.', 'data', 'inference_outputs'),
-         model_dir: str=os.path.join('.', 'results', 'default'),
+         model_path: str=os.path.join('.', 'checkpoints', f'scripted_model_1.0.0.pt'),
          densepose_path: str=os.path.join('.', 'densepose'),
          image_size: Union[Tuple[int], int]=(256, 256),
          batched: bool=False, batch_size: int=4,
-         verb: bool=False) -> None:
+         verb: bool=False, save_model: bool=False, load_from: int=-1,
+         base_dir: str=os.path.join('.', 'checkpoints'),
+         model_name: str='default') -> None:
     """
     """
-    print(image_size)
     curr_dir = os.getcwd()  # keep track of current user directory
     os.chdir(densepose_path)  # change to denspose dir for imports
     sys.path.append(densepose_path)  # Add densepose to path to evaluate on
@@ -313,13 +328,37 @@ def main(src: str, targ: str,
     else:
         print('batched operation not supported yet')
         exit()
-
-    batch_size = min(batch_size, n_src_files)
-    model_dir, model_name = os.path.split(model_dir)
-    verb and print(f'loading latest from run {model_name} in dir {model_dir}')
-    model = ModelLoader(base_dir=os.path.split(model_dir)[0], name=model_name,
-                        batch_size=batch_size, image_size=image_size[0])
     
+    empty = (None, None)
+    batch_size = min(batch_size, n_src_files)
+
+    # model_dir, model_name = os.path.split(model_dir)
+    if save_model or not os.path.isfile(model_path):
+        verb and print(f'saving torchscript jit model to {model_path}')
+        from stylegan2 import Trainer
+        model = Trainer(
+            name=model_name,
+            base_dir=base_dir,
+            image_size=image_size[0]
+        )
+        model.load(load_from)
+        model = model.GAN.eval()
+        pair = next(iter(data_pairs.values()), empty)
+        (I_s, P_s, A_s), (I_t, P_t, _) = pair
+
+        I_s = I_s.unsqueeze(0).cuda()#, size=image_size)
+        P_s = P_s.unsqueeze(0).cuda()#, size=image_size)
+        A_s = A_s.unsqueeze(0).cuda()#, size=image_size)
+        I_t = I_t.unsqueeze(0).cuda()#, size=image_size)
+        P_t = P_t.unsqueeze(0).cuda()#, size=image_size)
+        sample_input = ((I_s, P_s, A_s), (I_t, P_t))
+        scripted_model = torch.jit.trace(model, sample_input)
+        scripted_model.save(model_path)
+
+    verb and print(f'loading latest scripted model from {model_path}')
+    # model = ModelLoader(base_dir=os.path.split(model_dir)[0], name=model_name,
+    #                     batch_size=batch_size, image_size=image_size[0])
+    model = torch.jit.load(model_path)
     
 
     empty = (None, None)
@@ -335,7 +374,7 @@ def main(src: str, targ: str,
         P_t = P_t.unsqueeze(0).cuda()#, size=image_size)
 
         (image_size, I_dash_s, I_dash_s_to_t, I_dash_s_ema,
-         I_dash_s_to_t_ema) = model.generate((I_s, P_s, A_s), (I_t, P_t))
+         I_dash_s_to_t_ema) = model((I_s, P_s, A_s), (I_t, P_t))
 
         A_s = F.interpolate(A_s, size=image_size)
 

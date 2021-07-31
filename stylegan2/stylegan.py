@@ -483,7 +483,8 @@ class Conv2DMod(nn.Module):
 
         x = x.reshape(1, -1, h, w)
 
-        _, _, *ws = weights.shape
+        # _, _, *ws = weights.shape
+        ws = weights.shape[2:]
         weights = weights.reshape(b * self.filters, *ws)
 
         padding = self._get_same_padding(
@@ -811,8 +812,9 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
     def reset_parameter_averaging(self):
         self.GE.load_state_dict(self.G.state_dict())
 
-    def forward(self, x):
-        return x
+    def forward(self, batch):
+
+        return self.G(x)
 
 
 def get_d_total_loss(I_t, I_dash_s_to_t, pred_real_1, pred_fake_1, pred_real_2, pred_fake_2, d_patch):
