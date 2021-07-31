@@ -813,8 +813,26 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
         self.GE.load_state_dict(self.G.state_dict())
 
     def forward(self, batch):
+        (I_s, P_s, A_s), (I_t, P_t) = batch
+        I_s = I_s.cuda(self.rank)
+        P_s = P_s.cuda(self.rank)
+        A_s = A_s.cuda(self.rank)
+        I_t = I_t.cuda(self.rank)
+        P_t = P_t.cuda(self.rank)
 
-        return self.G(x)
+        batch_size = I_t.shape[0]
+
+        # Get encodings
+        E_s = self.GAN.p_net(P_s)
+        E_t = self.GAN.p_net(P_t)
+        z_s_1d = self.GAN.a_net(A_s)
+
+        z_s_def = [(z_s_1d, num_layers)]
+        z_s_styles = styles_def_to_tensor(z_s_def)
+
+        noise = image_noise(batch_size, image_size, device=self.rank)
+
+        return self.GAN.GE(z_s_styles, noise, E_s)
 
 
 def get_d_total_loss(I_t, I_dash_s_to_t, pred_real_1, pred_fake_1, pred_real_2, pred_fake_2, d_patch):
