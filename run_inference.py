@@ -240,6 +240,7 @@ def main(src: str, targ: str,
          verb: bool=False) -> None:
     """
     """
+    print(image_size)
     curr_dir = os.getcwd()  # keep track of current user directory
     os.chdir(densepose_path)  # change to denspose dir for imports
     sys.path.append(densepose_path)  # Add densepose to path to evaluate on

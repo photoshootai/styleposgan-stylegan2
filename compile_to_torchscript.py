@@ -1,6 +1,6 @@
 import torch
 
-from stylegan2 import StyleGAN2
+from stylegan2 import Trainer
 
 
 def styles_def_to_tensor(styles_def):
@@ -49,3 +49,55 @@ def infer(model, src, targ):
 
 	return (image_size, I_dash_s, I_dash_s_to_t,
 			I_dash_s_ema, I_dash_s_to_t_ema)
+
+
+def parse_args():
+    default_version = '1.0.0'
+    parser = argparse.ArgumentParser(description='Save model for inference')
+    parser.add_argument(
+        '--o', type=str,
+        default=os.path.join('.', 'checkpoints',
+        f'scripted_model_{default_version}.pt'),
+        help='file path to store scripted model'
+    )
+    parser.add_argument(
+        '--model_dir', type=str,
+        default=os.path.join('.', 'checkpoints', 'default'),
+        help='path to model checkpoint directory, ' + \
+             'eg. \'./checkpoints/dev-fixes\' (not a path to a .pt file!)'
+    )
+    parse_args.add_argument(
+        '--load_from', type=int, default=-1,
+        help='checkpoint number for model, use \'-1\' for latest'
+    )
+    parser.add_argument(
+        '--image_size', type=int, default=[256, 256], nargs='+',
+        help='image size to use in model, 1 or 2 comma separated ints'
+    )
+    args = parser.parse_args()
+
+    model_dir, name = os.path.split(args.model_dir)
+    base_dir = os.path.split(model_dir)[0]
+    image_size = (tuple(args.image_size[:2]) if len(args.image_size) >= 2
+                  else (*args.image_size, *args.image_size))
+
+    return (name, base_dir, args.o image_size, args.load_from)
+
+
+def main(name: str, base_dir: str, model_save_path: str,
+         image_size: Union[int, Tuple[int]]=(256, 256), load_from: int=-1):
+    
+    image_size = image_size if isinstance(image_size, int) else image_size[0]
+    model = Trainer(
+        name=name,
+        base_dir=base_dir,
+        image_size=image_size
+    )
+    model.load(load_from)
+    model.eval()
+    scripted_model = torch.jit.script(model)
+    scripted_model.save(model_save_path)
+
+
+if __name__ == "__main__":
+    main(*parse_args())
