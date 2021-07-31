@@ -1,3 +1,4 @@
+import numpy
 import argparse
 import os
 import pickle
@@ -11,7 +12,7 @@ from subprocess import PIPE, Popen
 from typing import Any, Callable, Dict, List, Tuple, Union, Iterable
 
 import cv2
-import numpy as np
+
 import torch
 import torch.nn.functional as F
 import torchvision
