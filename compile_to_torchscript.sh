@@ -1,7 +1,7 @@
 #!/bin/bash
 export MKL_THREADING_LAYER='GNU'
 
-model="/home/madhav/styleposgan-stylegan2/checkpoints/"
+model="/home/madhav/styleposgan-stylegan2/checkpoints/a100"
 src="/home/madhav/styleposgan-stylegan2/inf_test/source.jpg"
 targ="/home/madhav/styleposgan-stylegan2/inf_test/target.jpg"
 out='/home/madhav/styleposgan-stylegan2/inf_test/outputs'
@@ -20,7 +20,7 @@ densepose="/home/madhav/styleposgan-stylegan2/densepose"
 #     --image_size 256 -v \
 #     "
 
-python3.8 run_inference.py \
+python3.8 run_inference_prod.py \
     --save_model \
     --model_dir $model \
     --source $src \

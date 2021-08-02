@@ -1,4 +1,3 @@
-from dataset_check import show_batch
 import os
 import math
 import json
@@ -812,24 +811,19 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
     def reset_parameter_averaging(self):
         self.GE.load_state_dict(self.G.state_dict())
 
-    def forward(self, src, targ):
+    #Changing this for production inference where we only care about A_s, P_t
+    def forward(self, A_s, P_t): #inputs = (A_s, P_t)
         rank = 0
         latent_dim = self.G.latent_dim
         image_size = self.G.image_size
         num_layers = self.G.num_layers
 
-        (I_s, P_s, A_s), (I_t, P_t) = src, targ #batch
-
-        I_s = I_s.cuda(rank)
-        P_s = P_s.cuda(rank)
         A_s = A_s.cuda(rank)
-        I_t = I_t.cuda(rank)
         P_t = P_t.cuda(rank)
 
-        batch_size = I_t.shape[0]
+        batch_size = P_t.shape[0]
 
         # Get encodings
-        E_s = self.p_net(P_s)
         E_t = self.p_net(P_t)
         z_s_1d = self.a_net(A_s)
 
@@ -838,14 +832,10 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
 
         noise = image_noise(batch_size, image_size, device=rank)
 
-        I_dash_s = self.G(z_s_styles, noise, E_s)
         I_dash_s_to_t = self.G(z_s_styles, noise, E_t)
-
-        I_dash_s_ema = self.GE(z_s_styles, noise, E_s)
         I_dash_s_to_t_ema = self.GE(z_s_styles, noise, E_t)
 
-        return (torch.tensor(image_size), I_dash_s, I_dash_s_to_t,
-                I_dash_s_ema, I_dash_s_to_t_ema)
+        return (torch.tensor(image_size), I_dash_s_to_t, I_dash_s_to_t_ema)
 
 
 def get_d_total_loss(I_t, I_dash_s_to_t, pred_real_1, pred_fake_1, d_patch):
@@ -1630,6 +1620,7 @@ class Trainer():
             if len(saved_nums) == 0:
                 return
             name = saved_nums[-1]
+            print("**** Loading from checkpoint*****")
             print(f'continuing from previous epoch - {name}')
 
         self.steps = name * self.save_every
