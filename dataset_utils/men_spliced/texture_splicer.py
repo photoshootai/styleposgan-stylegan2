@@ -188,22 +188,23 @@ def main():
         exit()
     else:
         print('Pickle does not exist')
-        data_dir = "./data/DeepFashionMenOnlyCleaned"
+        raise ValueError("Cannot splice without pairings pickle file as file names don't have a pattern anymore")
+        # data_dir = "./data/DeepFashionMenOnlyCleaned"
 
-        in_data_dir = partial(os.path.join, data_dir)
-        sub_dirs = ['SourceImages', 'PoseMaps', 'TextureMaps']
-        img_dirs = tuple(map(in_data_dir, sub_dirs))
-        assert all(map(os.path.isdir, img_dirs)), 'Some requisite image directories not found'
+        # in_data_dir = partial(os.path.join, data_dir)
+        # sub_dirs = ['SourceImages', 'PoseMaps', 'TextureMaps']
+        # img_dirs = tuple(map(in_data_dir, sub_dirs))
+        # assert all(map(os.path.isdir, img_dirs)), 'Some requisite image directories not found'
 
-        files = [d.name for d in os.scandir(img_dirs[0])]
-        props = {'model'}
-        pruned_pairs = list(conditional_shuffle(files, props, 1, with_replacement=True))
-        print(f"Pairs : {len(pruned_pairs)}")
+        # files = [d.name for d in os.scandir(img_dirs[0])]
+        # props = {'model'}
+        # pruned_pairs = list(conditional_shuffle(files, props, 1, with_replacement=True))
+        # print(f"Pairs : {len(pruned_pairs)}")
 
-        random.seed(SEED)
-        random.shuffle(pruned_pairs) #(A, A)
-        with open(pkl, 'wb') as f:
-            pickle.dump(pruned_pairs, f)
+        # random.seed(SEED)
+        # random.shuffle(pruned_pairs) #(A, A)
+        # with open(pkl, 'wb') as f:
+        #     pickle.dump(pruned_pairs, f)
     
     create_texture_spliced_dataset(pruned_pairs)
 
