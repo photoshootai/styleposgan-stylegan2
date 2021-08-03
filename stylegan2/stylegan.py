@@ -1164,7 +1164,6 @@ class Trainer():
             I_t = I_t.cuda(self.rank)
 
 
-
             # Get encodings
             E_t = p_net(I_t_pose)
             z_spliced = a_net(I_spliced_texture)
@@ -1405,12 +1404,11 @@ class Trainer():
         fake_path = self.fid_dir / 'fake'
 
         # Get batch inputs
-        (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
+        I_s, I_spliced_texture, I_t_pose, I_t = next(self.loader)
         I_s = I_s.cuda(self.rank)
-        S_pose_map = S_pose_map.cuda(self.rank)
-        S_texture_map = S_texture_map.cuda(self.rank)
+        I_spliced_texture = I_spliced_texture.cuda(self.rank)
+        I_t_pose = I_t_pose.cuda(self.rank)
         I_t = I_t.cuda(self.rank)
-        T_pose_map = T_pose_map.cuda(self.rank)
 
         # remove any existing files used for fid calculation and recreate directories
 
@@ -1437,8 +1435,8 @@ class Trainer():
         num_layers = self.GAN.G.num_layers
 
         # Get encodings
-        E_t = self.GAN.p_net(T_pose_map)
-        z_s_1d = self.GAN.a_net(S_texture_map).expand(-1, num_layers, -1)
+        E_t = self.GAN.p_net(I_t_pose)
+        z_s_1d = self.GAN.a_net(I_spliced_texture).expand(-1, num_layers, -1)
 
         z_s_def = [(z_s_1d, num_layers)]
         z_s_styles = styles_def_to_tensor(z_s_def)
