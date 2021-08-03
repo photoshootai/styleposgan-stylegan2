@@ -50,3 +50,4 @@ tb_logs/
 /fid
 /models/*/
 .ipynb_checkpoints/
+/inf_test
