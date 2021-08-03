@@ -114,13 +114,13 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # all_pairs, (all_images, all_image_filenames) = get_all_pairs_and_images(args.raw_dataset_dir, args.pairs_limit)
+    all_pairs, (all_images, all_image_filenames) = get_all_pairs_and_images(args.raw_dataset_dir, args.pairs_limit)
 
 
     
-    # write_to_pickle(all_pairs, args.out_pkl_file)
-    # create_flattened_dataset(all_images, all_image_filenames, args.out_dataset_path)
+    write_to_pickle(all_pairs, args.out_pkl_file)
+    create_flattened_dataset(all_images, all_image_filenames, args.out_dataset_path)
 
-    all_pairs = read_from_pickle(args.out_pkl_file)
+    # all_pairs = read_from_pickle(args.out_pkl_file)
 
-    print(sample(all_pairs, 10))
+    # print(sample(all_pairs, 10))

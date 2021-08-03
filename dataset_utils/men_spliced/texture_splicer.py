@@ -137,6 +137,7 @@ def create_texture_spliced_dataset(pruned_pairs, in_data_dir, spliced_data_out_d
     in_data_dir = partial(os.path.join, data_dir)
     sub_dirs = ['SourceImages', 'PoseMaps', 'TextureMaps']
     img_dirs = tuple(map(in_data_dir, sub_dirs))
+    # print(img_dirs)
     assert all(map(os.path.isdir, img_dirs)), 'Some requisite image directories not found'
 
     files = [d.name for d in os.scandir(img_dirs[0])]
@@ -224,5 +225,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
     main(args.pairs_pkl, args.in_data_dir, args.out_data_dir)
 
-
-    main()

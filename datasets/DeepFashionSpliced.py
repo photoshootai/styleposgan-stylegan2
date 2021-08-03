@@ -145,7 +145,7 @@ class DeepFashionSplicedDataset(Dataset):
         self.img_size = image_size if isinstance(image_size, Tuple) else (int(image_size), int(image_size))
 
         in_data_dir = partial(os.path.join, data_dir)
-        self.sub_dirs = ('SourceImages', 'PoseMaps', 'TextureMaps', 'TargetImages')
+        self.sub_dirs = ('SourceImages',  'TextureMaps', 'PoseMaps', 'TargetImages')
         self.img_dirs = tuple(map(in_data_dir, self.sub_dirs))
         assert all(map(os.path.isdir, self.img_dirs)), 'Some requisite image directories not found'
 
@@ -196,15 +196,26 @@ class DeepFashionSplicedDataset(Dataset):
                 # transforms.Lambda(self.to_rgb),
                 transforms.Lambda(self.scale_and_crop)
             ]),
+            
+            transforms.Compose([  # For texture Maps
+                transforms.ToTensor()  # converts [0, 255] to float[0.0, 1.0]
+            ]),
+
             transforms.Compose([  # For Pose maps
                 # this will screw up pose segmentation since {0,..., 24} gets mapped to [0.0, 1.0]
                 transforms.ToTensor(),
                 # guaranteed to be 3 channels
                 transforms.Lambda(self.scale_and_crop)
             ]),
-            transforms.Compose([  # For texture Maps
-                transforms.ToTensor()  # converts [0, 255] to float[0.0, 1.0]
+
+            #TODO: check if this transform is going to be the same as the one for the source image @Kshitij
+            transforms.Compose([  # For target images
+                transforms.ToTensor(),  # [0, 255] gets mapped to [0.0, 1.0]
+                # convert to 3 channels (squash alpha) -> don't need
+                # transforms.Lambda(self.to_rgb),
+                transforms.Lambda(self.scale_and_crop)
             ])
+   
         )
 
     def __len__(self):
@@ -228,10 +239,14 @@ class DeepFashionSplicedDataset(Dataset):
         src_im_paths = starmap(os.path.join, zip(self.img_dirs, repeat(file_name)))  # (src, pose, txt)
         # targ_im_paths = starmap(os.path.join, zip(self.img_dirs, repeat(targ_file, 2)))  # (src, pose)
 
+        # print(list(src_im_paths))
         src_imgs = map(Image.open, src_im_paths)
         # targ_imgs = map(Image.open, targ_im_paths)
 
         all_samples = (f(x) for f, x in zip(self.transforms, src_imgs))
+        all_samples = tuple(all_samples)
+
+
         src_img, tex_map, pose_map, targ_img = all_samples
 
 

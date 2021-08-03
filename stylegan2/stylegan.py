@@ -1,4 +1,3 @@
-from dataset_check import show_batch
 import os
 import math
 import json
@@ -41,12 +40,14 @@ from .version import __version__
 from PIL import Image
 from pathlib import Path
 
-from datasets import DeepFashionDataset
+from datasets import DeepFashionDataset, DeepFashionSplicedDataset
 from models import ANet, PNet
 
 from losses import VGG16Perceptual, FaceIDLoss
 
 import torch.nn.functional as F
+
+# from dataset_utils.dataset_check import show_batch
 
 # torch.autograd.set_detect_anomaly(True)
 import wandb
@@ -370,6 +371,23 @@ def dual_contrastive_loss(real_logits, fake_logits):
     return loss_half(real_logits, fake_logits) + loss_half(-fake_logits, -real_logits)
 
 
+def show_batch_inputs(batch, image_size=(256, 256)):
+    I_s, A_s, P_t, I_t = batch  # Get next iter
+
+    size = I_s.shape[0]
+
+    I_s = F.interpolate(I_s, size=image_size) # Resize all to same size
+    A_s = F.interpolate(A_s, size=image_size)
+    I_t = F.interpolate(I_t, size=image_size)
+    P_t = F.interpolate(P_t, size=image_size)
+
+    generated_stack = torch.cat(
+        (I_s, I_t, A_s, P_t), dim=0)
+    
+    save_path = str(f"./results/debugging.jpg") # Stack and save
+    torchvision.utils.save_image(generated_stack, save_path, nrow=size)
+
+    input("Enter to continue ...")
 # augmentations
 
 def random_hflip(tensor, prob):
@@ -1063,8 +1081,10 @@ class Trainer():
 
     def set_data_src(self, folder, overfit, subset):
 
-        self.dataset = DeepFashionDataset(
-            folder, self.image_size, transparent=self.transparent, aug_prob=self.dataset_aug_prob)
+        # self.dataset = DeepFashionDataset(
+        #     folder, self.image_size, transparent=self.transparent, aug_prob=self.dataset_aug_prob)
+
+        self.dataset = DeepFashionSplicedDataset(folder, self.image_size, transparent=self.transparent, aug_prob=self.dataset_aug_prob)
         
         #If Subset command line option
         if subset is not None: #subset = int
@@ -1101,8 +1121,8 @@ class Trainer():
 
 
     def train(self):
-        if self.steps == 0:
-            print("******TRAINING WITH REAL TRAINING LOOP *******")
+        # if self.steps == 0:
+        #     print("******TRAINING WITH REAL TRAINING LOOP *******")
         assert exists(
             self.loader), 'You must first initialize the data source with `.set_data_src(<folder of images>)`'
 
@@ -1157,7 +1177,11 @@ class Trainer():
 
             # Get batch inputs
             # (I_s, S_pose_map, S_texture_map), (I_t, T_pose_map) = next(self.loader)
-            I_s, I_spliced_texture, I_t_pose, I_t = next(self.loader)
+
+            batch = next(self.loader)
+            # show_batch_inputs(batch)
+            
+            I_s, I_spliced_texture, I_t_pose, I_t = batch
             I_s = I_s.cuda(self.rank)
             I_spliced_texture = I_spliced_texture.cuda(self.rank)
             I_t_pose = I_t_pose.cuda(self.rank)
@@ -1190,7 +1214,7 @@ class Trainer():
 
 
             if apply_gradient_penalty:
-                gp3 = gradient_penalty(I_s, real_output_loss_3)
+                gp3 = gradient_penalty(I_t, real_output_loss_3)
 
                 self.last_gp_loss = gp3.clone().detach().item()
                 self.track(self.last_gp_loss, 'GP')
@@ -1241,7 +1265,7 @@ class Trainer():
 
 
             #Generate I''
-            I_double_dash = G(z_spliced_styles,I_t_pose)
+            I_double_dash = G(z_spliced_styles, noise, E_t)
             fake_output_3, _ = D_aug(I_double_dash, **aug_kwargs)
             fake_output_loss_3 = fake_output_3
 
@@ -1271,9 +1295,6 @@ class Trainer():
                 torch.div(loss.detach(), self.gradient_accumulate_every)
             rec_loss_1 = rec_loss_1 + \
                 torch.div(rec_loss_1.detach(),
-                          self.gradient_accumulate_every)
-            rec_loss_2 = rec_loss_2 + \
-                torch.div(rec_loss_2.detach(),
                           self.gradient_accumulate_every)
             patch_loss = patch_loss + \
                 torch.div(patch_loss.detach(),
@@ -1356,6 +1377,13 @@ class Trainer():
         I_t = I_t.cuda(self.rank)
 
         batch_size = I_t.shape[0]
+
+
+        print("I_s size", I_s.shape)
+        print("I_spliced_texture size", I_spliced_texture.shape)
+        print("I_t_pose size", I_t_pose.shape)
+        print("I_t size", I_t.shape)
+
 
         # Get encodings
         E_t = self.GAN.p_net(I_t_pose)
