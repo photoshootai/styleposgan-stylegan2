@@ -235,5 +235,5 @@ class DeepFashionSplicedDataset(Dataset):
         src_img, tex_map, pose_map, targ_img = all_samples
 
 
-        return tuple(source_set), tuple(target_set)
+        return src_img, tex_map, pose_map, targ_img
 
