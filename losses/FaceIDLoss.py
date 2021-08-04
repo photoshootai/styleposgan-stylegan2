@@ -131,14 +131,12 @@ class FaceIDLoss(nn.Module):
         #     return torch.tensor(0.0, device=self.device)
         # # print(len(has_face_real), len(should_have_face_gen))
 
-        real_crops_with_face = torch.stack(real_crops).to(device)
+        fill_none_in_real = [(c if c is not None else torch.zeros((3, crop_size, crop_size))) for c in real_crops]
+        real_crops_with_face = torch.stack(fill_none_in_real).to(device)
         real_embeddings = self.resnet(real_crops_with_face).detach()
-        # print(real_crops_with_face.shape)
-        # print(real_embeddings.shape)
+  
 
-        fill_none_in_gen = [(c if c is not None else torch.zeros((3, crop_size, crop_size))) for c in gen_crops]
-        # print([x.shape for x in fill_none_in_gen])
-        
+        fill_none_in_gen = [(c if c is not None else torch.zeros((3, crop_size, crop_size))) for c in gen_crops]        
         gen_crops_with_face = torch.stack(fill_none_in_gen).to(device)
         gen_embeddings = self.resnet(gen_crops_with_face).detach()
 
