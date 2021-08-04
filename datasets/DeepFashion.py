@@ -4,7 +4,7 @@ import time
 import random
 import re
 from functools import partial, reduce
-from itertools import chain, repeat, starmap, compress, permutations
+from itertools import chain, repeat, starmap, compress, permutations, product
 from math import ceil
 from typing import Iterable, Tuple, Union, Set, List
 from multiprocessing import Pool
@@ -140,12 +140,13 @@ def filter_opt(opt, files, props):
     # list for multiprocessing compatibility generator preferred for single threaded
     return list(filter(lambda f: opt == extract_prop(f, props), files))
 
-def conditional_shuffle(files: Iterable[str], props: Set[str], n_threads: int=6) -> Iterable[Tuple[str]]:
+def conditional_shuffle(files: Iterable[str], props: Set[str], n_threads: int=6, with_replacement=False) -> Iterable[Tuple[str]]:
+    perm_func = partial(permutations, r=2) if not with_replacement else partial(product, repeat=2)
     extract = partial(extract_prop, props=props)
     opts = set(extract(f) for f in files)
     with Pool(n_threads) as P:
         groups = P.starmap(filter_opt, zip(opts, repeat(files), repeat(props)))
-        pairs = P.starmap(permutations, zip(groups, repeat(2)))
+        pairs = P.map(perm_func, groups)
     
     pruned_pairs = (pair for pair in chain.from_iterable(pairs) if pair)
     return pruned_pairs
