@@ -1,4 +1,4 @@
 from .DeepFashion import DeepFashionDataset
 from .DeepFashion import conditional_shuffle
 
-from.DeepFashionSpliced import DeepFashionSplicedDataset
+from.DeepFashionSplicedNew import DeepFashionSplicedDataset
