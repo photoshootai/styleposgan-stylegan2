@@ -51,7 +51,7 @@ def run_densepose_network(source_img_dir: str, output_pkl: str,
     config_path = os.path.join(dp_path, 'configs',
                                f'{MODEL_URL.split("/")[-3]}.yaml')
 
-    call =  ['python3', apply_net_path, 'dump', '-v']
+    call =  ['python3.8', apply_net_path, 'dump', '-v']
     call += ['--output', output_pkl]
     call += [config_path]
     call += [MODEL_URL, source_img_dir]
@@ -334,6 +334,11 @@ def main(src: str, targ: str,
     empty = (None, None)
     batch_size = min(batch_size, n_src_files)
 
+
+    """
+    Scripting Block
+    """
+
     # model_dir, model_name = os.path.split(model_dir)
     if save_model or not os.path.isfile(model_path):
         verb and print(f'saving torchscript jit model to {model_path}')
@@ -354,7 +359,7 @@ def main(src: str, targ: str,
         # I_t = I_t.unsqueeze(0).cuda()#, size=image_size)
         P_t = P_t.unsqueeze(0)#.cuda()#, size=image_size)
         A_t = A_t.unsqueeze(0)
-        A_t = DF.splice(A_s, A_t)
+        A_t = DF.splice_batched(A_s, A_t)
         sample_input = (A_t, P_t)
 
         print(A_s.size())
@@ -363,6 +368,10 @@ def main(src: str, targ: str,
         scripted_model.save(model_path)
         verb and print(f'model traced and saved to {model_path}! Exiting...')
         exit()
+
+    """
+    Loading and Inferencing Block
+    """
 
     verb and print(f'loading latest scripted model from {model_path}')
     # model = ModelLoader(base_dir=os.path.split(model_dir)[0], name=model_name,
@@ -383,38 +392,42 @@ def main(src: str, targ: str,
         P_t = P_t.unsqueeze(0)#.cuda()#, size=image_size)
         A_t = A_t.unsqueeze(0)#.cuda()#, size=image_size)
 
-        # im = torchvision.transforms.ToPILImage()(A_s.squeeze())
-        # im.show()
-        # im = torchvision.transforms.ToPILImage()(A_t.squeeze())
-        # im.show()
+        im = torchvision.transforms.ToPILImage()(A_s.squeeze())
+        im.show()
+        im = torchvision.transforms.ToPILImage()(A_t.squeeze())
+        im.show()
 
 
-        A_t = DF.splice(A_s, A_t)
-        # im = torchvision.transforms.ToPILImage()(A_t.squeeze())
-        # im.show()
-        # exit()
+        spliced_texture = DF.splice_batched(A_s, A_t)
+        im = torchvision.transforms.ToPILImage()(spliced_texture.squeeze())
+        im.show()
 
-        (image_size, I_dash_s_to_t, I_dash_s_to_t_ema) = model(A_t, P_t)
-        image_size = image_size.item()
-        # A_s = F.interpolate(A_s, size=image_size)
-        A_t = F.interpolate(A_t, size=image_size)
+        input("Showing As, At and spliced...")
 
-        regular = torch.cat(
-            (I_s, P_s, A_t, I_t, P_t, I_dash_s_to_t), dim=0
-        )
 
-        ema = torch.cat(
-            (I_s, P_s, A_t, I_t, P_t, I_dash_s_to_t_ema), dim=0
-        )
+        # (image_size, I_dash_s_to_t, I_dash_s_to_t_ema) = model(spliced_texture, P_t)
+        # image_size = image_size.item()
 
-        # final_img = torch.cat((regular, ema), dim=0)  # to concat reg + ema together
-        reg_save_path = os.path.join(results_dir, f'{img}_inference.jpg')
-        ema_save_path = os.path.join(results_dir, f'{img}_inference_EMA.jpg')
+        # # A_s = F.interpolate(A_s, size=image_size)
+        # spliced_texture = F.interpolate(spliced_texture, size=image_size)
 
-        torchvision.utils.save_image(regular, reg_save_path, nrow=batch_size)
-        torchvision.utils.save_image(ema, ema_save_path, nrow=batch_size)
-        verb and print(f'saved files - reg: {reg_save_path} and ema: {ema_save_path}')
-        img, pair = next(data_iter, empty)
+        # regular = torch.cat(
+        #     (I_s, P_s, spliced_texture, I_t, P_t, I_dash_s_to_t), dim=0
+        # )
+
+        # ema = torch.cat(
+        #     (I_s, P_s, spliced_texture, I_t, P_t, I_dash_s_to_t_ema), dim=0
+        # )
+
+        # # final_img = torch.cat((regular, ema), dim=0)  # to concat reg + ema together
+        # reg_save_path = os.path.join(results_dir, f'{img}_inference.jpg')
+        # ema_save_path = os.path.join(results_dir, f'{img}_inference_EMA.jpg')
+
+        # torchvision.utils.save_image(regular, reg_save_path, nrow=batch_size)
+        # torchvision.utils.save_image(ema, ema_save_path, nrow=batch_size)
+        # verb and print(f'saved files - reg: {reg_save_path} and ema: {ema_save_path}')
+        # img, pair = next(data_iter, empty)
+
     
     # go back to previous directory
     os.chdir(curr_dir)

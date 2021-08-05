@@ -122,6 +122,7 @@ def conditional_shuffle(files: Iterable[str], props: Set[str], n_threads: int=6,
 
 
 def splice_unbatched(A_s, A_t):
+    assert len(A_s.shape) == 3 and len(A_t.shape) == 3, "Inputs must not be batched" 
     
     #Face Splicing
     h1 = 220 #230 #303
@@ -136,6 +137,25 @@ def splice_unbatched(A_s, A_t):
 
     A_t[:, 0:h1, 0:w1] = A_s[:, 0:h1, 0:w1]  # face
     A_t[:, h2:-1, w2:-1] = A_s[:, h2:-1, w2:-1]  # hands
+
+    return A_t
+
+def splice_batched(A_s, A_t):
+    
+    assert len(A_s.shape) == 4 and len(A_t.shape) == 4, "Inputs must be batched" 
+    #Face Splicing
+    h1 = 220 #230 #303
+    w1 = 303 #288 #220
+
+    #Hand Slicing
+    h2 = -70
+    w2 = -232
+    
+    # print(A_s.size())
+    # print(A_t.size())
+
+    A_t[:, :, 0:h1, 0:w1] = A_s[:, :, 0:h1, 0:w1]  # face
+    A_t[:, :, h2:-1, w2:-1] = A_s[:, :, h2:-1, w2:-1]  # hands
 
     return A_t
 
