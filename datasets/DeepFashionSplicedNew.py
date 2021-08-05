@@ -121,7 +121,7 @@ def conditional_shuffle(files: Iterable[str], props: Set[str], n_threads: int=6,
     return pruned_pairs
 
 
-def splice(A_s, A_t):
+def splice_unbatched(A_s, A_t):
     
     #Face Splicing
     h1 = 220 #230 #303
@@ -131,8 +131,11 @@ def splice(A_s, A_t):
     h2 = -70
     w2 = -232
     
-    A_t[:, :, 0:h1, 0:w1] = A_s[:, :, 0:h1, 0:w1]  # face
-    A_t[:, :, h2:-1, w2:-1] = A_s[:, :, h2:-1, w2:-1]  # hands
+    # print(A_s.size())
+    # print(A_t.size())
+
+    A_t[:, 0:h1, 0:w1] = A_s[:, 0:h1, 0:w1]  # face
+    A_t[:, h2:-1, w2:-1] = A_s[:, h2:-1, w2:-1]  # hands
 
     return A_t
 
@@ -269,7 +272,7 @@ class DeepFashionSplicedDataset(Dataset):
         target_set = (f(x) for f, x in zip(self.transforms, targ_imgs))
 
         (I_s, _, A_s), (I_t, P_t, A_t) = source_set, target_set
-        spliced_texture = splice(A_s, A_t)
+        spliced_texture = splice_unbatched(A_s, A_t)
 
         return (I_s, spliced_texture, P_t, I_t)
 

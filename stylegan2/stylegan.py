@@ -872,9 +872,9 @@ def get_d_total_loss(I_t, I_dash_s_to_t, pred_real_1, pred_fake_1, d_patch):
 
 def get_g_total_loss(I_t, I_double_dash, fake_output_1, real_output_1, vgg_model, face_id_model, d_patch_model, mtcnn_crop_size):
 
-    weight_l1 = 7.
-    weight_vgg = 7.
-    weight_face = 7.
+    weight_l1 = 5.
+    weight_vgg = 5.
+    weight_face = 10.
     weight_gan = 1.
     weight_patch = 1.
 
@@ -1204,6 +1204,7 @@ class Trainer():
 
             batch = next(self.loader)
             # show_batch_inputs(batch)
+            # input("Press enter to get next batch...")
             
             I_s, I_spliced_texture, I_t_pose, I_t = batch
             I_s = I_s.cuda(self.rank)

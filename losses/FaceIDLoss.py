@@ -1,4 +1,3 @@
-import face_detection as FD
 import numpy as np
 import torch
 import torch.nn as nn
