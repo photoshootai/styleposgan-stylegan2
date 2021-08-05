@@ -20,7 +20,7 @@ from PIL import Image
 from tqdm import tqdm
 from UVTextureConverter import Atlas2Normal
 
-from datasets import DeepFashion as DF
+from datasets import DeepFashionSplicedNew as DF
 # from models import ANet, PNet
 # from stylegan2.stylegan import ModelLoader
 
@@ -55,6 +55,7 @@ def run_densepose_network(source_img_dir: str, output_pkl: str,
     call += ['--output', output_pkl]
     call += [config_path]
     call += [MODEL_URL, source_img_dir]
+    call += ['--opts', 'MODEL.DEVICE', 'cpu']
 
     with Popen(call, stdout=PIPE, stderr=PIPE) as proc:
         if stdout:
@@ -345,18 +346,20 @@ def main(src: str, targ: str,
         model.load(load_from)
         # model = model.GAN
         pair = list(data_pairs.values())[0]
-        (I_s, P_s, A_s), (I_t, P_t, _) = pair
+        (I_s, P_s, A_s), (I_t, P_t, A_t) = pair
 
         # I_s = I_s.unsqueeze(0).cuda()#, size=image_size)
         # P_s = P_s.unsqueeze(0).cuda()#, size=image_size)
-        A_s = A_s.unsqueeze(0).cuda()#, size=image_size)
+        A_s = A_s.unsqueeze(0)#.cuda()#, size=image_size)
         # I_t = I_t.unsqueeze(0).cuda()#, size=image_size)
-        P_t = P_t.unsqueeze(0).cuda()#, size=image_size)
-        sample_input = (A_s, P_t)
+        P_t = P_t.unsqueeze(0)#.cuda()#, size=image_size)
+        A_t = A_t.unsqueeze(0)
+        A_t = DF.splice(A_s, A_t)
+        sample_input = (A_t, P_t)
 
         print(A_s.size())
         print(P_t.size())
-        scripted_model = torch.jit.trace(model.GAN, sample_input)
+        scripted_model = torch.jit.trace(model.GAN.cpu(), sample_input)
         scripted_model.save(model_path)
         verb and print(f'model traced and saved to {model_path}! Exiting...')
         exit()
@@ -371,24 +374,37 @@ def main(src: str, targ: str,
     data_iter = iter(data_pairs.items())
     img, pair = next(data_iter, empty)
     while img is not None and pair:
-        (I_s, P_s, A_s), (I_t, P_t, _) = pair
+        (I_s, P_s, A_s), (I_t, P_t, A_t) = pair
 
-        I_s = I_s.unsqueeze(0).cuda()#, size=image_size)
-        P_s = P_s.unsqueeze(0).cuda()#, size=image_size)
-        A_s = A_s.unsqueeze(0).cuda()#, size=image_size)
-        I_t = I_t.unsqueeze(0).cuda()#, size=image_size)
-        P_t = P_t.unsqueeze(0).cuda()#, size=image_size)
+        I_s = I_s.unsqueeze(0)#.cuda()#, size=image_size)
+        P_s = P_s.unsqueeze(0)#.cuda()#, size=image_size)
+        A_s = A_s.unsqueeze(0)#.cuda()#, size=image_size)
+        I_t = I_t.unsqueeze(0)#.cuda()#, size=image_size)
+        P_t = P_t.unsqueeze(0)#.cuda()#, size=image_size)
+        A_t = A_t.unsqueeze(0)#.cuda()#, size=image_size)
 
-        (image_size, I_dash_s_to_t, I_dash_s_to_t_ema) = model(A_s, P_t)
+        # im = torchvision.transforms.ToPILImage()(A_s.squeeze())
+        # im.show()
+        # im = torchvision.transforms.ToPILImage()(A_t.squeeze())
+        # im.show()
+
+
+        A_t = DF.splice(A_s, A_t)
+        # im = torchvision.transforms.ToPILImage()(A_t.squeeze())
+        # im.show()
+        # exit()
+
+        (image_size, I_dash_s_to_t, I_dash_s_to_t_ema) = model(A_t, P_t)
         image_size = image_size.item()
-        A_s = F.interpolate(A_s, size=image_size)
+        # A_s = F.interpolate(A_s, size=image_size)
+        A_t = F.interpolate(A_t, size=image_size)
 
         regular = torch.cat(
-            (I_s, P_s, A_s, I_t, P_t, I_dash_s_to_t), dim=0
+            (I_s, P_s, A_t, I_t, P_t, I_dash_s_to_t), dim=0
         )
 
         ema = torch.cat(
-            (I_s, P_s, A_s, I_t, P_t, I_dash_s_to_t_ema), dim=0
+            (I_s, P_s, A_t, I_t, P_t, I_dash_s_to_t_ema), dim=0
         )
 
         # final_img = torch.cat((regular, ema), dim=0)  # to concat reg + ema together

@@ -69,7 +69,9 @@ def resize_to_minimum_size(min_size, image):
 
 
 class scale_and_crop(object):
-    def __init__(self, img_size: Tuple[int]) -> None:
+    def __init__(self, img_size: Union[Tuple[int], int]) -> None:
+        if isinstance(img_size, int):
+            img_size = (img_size, img_size) 
         self.img_size = img_size
         # self.crop = transforms.RandomCrop(img_size)
 
@@ -91,6 +93,35 @@ class scale_and_crop(object):
         cropped = resized[:, :new_h, mid:w - mid]
 
         return cropped
+
+
+def get_transforms(scale_and_crop, is_tensor=False):
+    t_set = (
+        [transforms.Lambda(scale_and_crop)], # source images
+        [transforms.Lambda(scale_and_crop)], # pose maps
+        list(),                              # texture_maps
+    )
+    if not is_tensor:
+        to_tensor = [transforms.ToTensor()]
+        t_set = tuple(to_tensor + t for t in t_set)
+            
+    return tuple(transforms.Compose(t) for t in t_set)
+        # transforms.Compose([  # For source images
+        #     transforms.ToTensor(),  # [0, 255] gets mapped to [0.0, 1.0]
+        #     # convert to 3 channels (squash alpha) -> don't need
+        #     # transforms.Lambda(self.to_rgb),
+        #     transforms.Lambda(scale_and_crop)
+        # ]),
+        # transforms.Compose([  # For Pose maps
+        #     # this will screw up pose segmentation since {0,..., 24} gets mapped to [0.0, 1.0]
+        #     transforms.ToTensor(),
+        #     # guaranteed to be 3 channels
+        #     transforms.Lambda(scale_and_crop)
+        # ]),
+        # transforms.Compose([  # For texture Maps
+        #     transforms.ToTensor()  # converts [0, 255] to float[0.0, 1.0]
+        # ])
+    # )
 
 
 cat_map = {'sex': 0, 'clothing_category': 1, 'const_1': 2, 'model': 3, 'clothing_id': 4, 'idx': 5, 'pose': 6}
@@ -189,23 +220,7 @@ class DeepFashionDataset(Dataset):
         # self.to_rgb = convert_transparent_to_rgb if transparent else lambda x: x
         # self.expand_greyscale = expand_greyscale(transparent)
         self.scale_and_crop = scale_and_crop(self.img_size) if scale_crop else transforms.Resize(self.img_size)
-        self.transforms = (
-            transforms.Compose([  # For source images
-                transforms.ToTensor(),  # [0, 255] gets mapped to [0.0, 1.0]
-                # convert to 3 channels (squash alpha) -> don't need
-                # transforms.Lambda(self.to_rgb),
-                transforms.Lambda(self.scale_and_crop)
-            ]),
-            transforms.Compose([  # For Pose maps
-                # this will screw up pose segmentation since {0,..., 24} gets mapped to [0.0, 1.0]
-                transforms.ToTensor(),
-                # guaranteed to be 3 channels
-                transforms.Lambda(self.scale_and_crop)
-            ]),
-            transforms.Compose([  # For texture Maps
-                transforms.ToTensor()  # converts [0, 255] to float[0.0, 1.0]
-            ])
-        )
+        self.transforms = get_transforms(self.scale_and_crop)
 
     def __len__(self):
         """

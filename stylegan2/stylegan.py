@@ -506,6 +506,7 @@ class Conv2DMod(nn.Module):
 
         padding = self._get_same_padding(
             h, self.kernel, self.dilation, self.stride)
+        padding = padding if isinstance(padding, int) else padding.item()
         x = F.conv2d(x, weights, padding=padding, groups=b)
 
         x = x.reshape(-1, self.filters, h, w)
@@ -829,8 +830,31 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
     def reset_parameter_averaging(self):
         self.GE.load_state_dict(self.G.state_dict())
 
-    def forward(self, x):
-        return x
+    #Changing this for production inference where we only care about A_s, P_t
+    def forward(self, A_s, P_t, device='cpu'): #inputs = (A_s, P_t)
+        latent_dim = self.G.latent_dim
+        image_size = self.G.image_size
+        num_layers = self.G.num_layers
+
+        # A_s = A_s.to(device) #cuda(rank)
+        # P_t = P_t.to(device) #.cuda(rank)
+
+        batch_size = P_t.shape[0]
+
+        # Get encodings
+        E_t = self.p_net(P_t)
+        z_s_1d = self.a_net(A_s)
+
+        z_s_def = [(z_s_1d, num_layers)]
+        z_s_styles = styles_def_to_tensor(z_s_def)
+
+        # noise = image_noise(batch_size, image_size, device=rank)
+        noise = torch.FloatTensor(batch_size, image_size, image_size, 1).uniform_(0., 1.)
+
+        I_dash_s_to_t = self.G(z_s_styles, noise, E_t)
+        I_dash_s_to_t_ema = self.GE(z_s_styles, noise, E_t)
+
+        return (torch.tensor(image_size), I_dash_s_to_t, I_dash_s_to_t_ema)
 
 
 def get_d_total_loss(I_t, I_dash_s_to_t, pred_real_1, pred_fake_1, d_patch):
@@ -1623,6 +1647,7 @@ class Trainer():
             if len(saved_nums) == 0:
                 return
             name = saved_nums[-1]
+            print("**** Loading from checkpoint*****")
             print(f'continuing from previous epoch - {name}')
 
         self.steps = name * self.save_every
@@ -1647,9 +1672,46 @@ class Trainer():
 
 
 class ModelLoader:
-    def __init__(self, *, base_dir, name='default', load_from=-1):
-        self.model = Trainer(name=name, base_dir=base_dir)
+    def __init__(self, *, base_dir, name='default', load_from=-1, batch_size=1,
+                 image_size=256):
+        self.model = Trainer(name=name, base_dir=base_dir, image_size=image_size)
+        self.rank = 0
+        self.batch_size = batch_size
         self.model.load(load_from)
+    
+    def generate(self, src, targ):
+        (I_s, P_s, A_s), (I_t, P_t) = src, targ
+
+        latent_dim = self.model.GAN.G.latent_dim
+        image_size = self.model.GAN.G.image_size
+        num_layers = self.model.GAN.G.num_layers
+
+        I_s = I_s.cuda(self.rank)
+        P_s = P_s.cuda(self.rank)
+        A_s = A_s.cuda(self.rank)
+        I_t = I_t.cuda(self.rank)
+        P_t = P_t.cuda(self.rank)
+
+        batch_size = I_t.shape[0] # always 1 for now
+
+        # # Get encodings
+        E_s = self.model.GAN.p_net(P_s)
+        E_t = self.model.GAN.p_net(P_t)
+        z_s_1d = self.model.GAN.a_net(A_s)
+
+        z_s_def = [(z_s_1d, num_layers)]
+        z_s_styles = styles_def_to_tensor(z_s_def)
+
+        noise = image_noise(batch_size, image_size, device=self.rank)
+
+        I_dash_s = self.model.GAN.G(z_s_styles, noise, E_s)
+        I_dash_s_to_t = self.model.GAN.G(z_s_styles, noise, E_t)
+
+        I_dash_s_ema = self.model.GAN.GE(z_s_styles, noise, E_s)
+        I_dash_s_to_t_ema = self.model.GAN.GE(z_s_styles, noise, E_t)
+
+        return (image_size, I_dash_s, I_dash_s_to_t,
+                I_dash_s_ema, I_dash_s_to_t_ema)
 
     def noise_to_styles(self, noise, trunc_psi=None):
         noise = noise.cuda()
