@@ -831,14 +831,13 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
         self.GE.load_state_dict(self.G.state_dict())
 
     #Changing this for production inference where we only care about A_s, P_t
-    def forward(self, A_s, P_t): #inputs = (A_s, P_t)
-        rank = 0
+    def forward(self, A_s, P_t, device='cpu'): #inputs = (A_s, P_t)
         latent_dim = self.G.latent_dim
         image_size = self.G.image_size
         num_layers = self.G.num_layers
 
-        A_s = A_s.cuda(rank)
-        P_t = P_t.cuda(rank)
+        # A_s = A_s.to(device) #cuda(rank)
+        # P_t = P_t.to(device) #.cuda(rank)
 
         batch_size = P_t.shape[0]
 
@@ -849,7 +848,8 @@ class StyleGAN2(nn.Module):  # This is turned into StylePoseGAN
         z_s_def = [(z_s_1d, num_layers)]
         z_s_styles = styles_def_to_tensor(z_s_def)
 
-        noise = image_noise(batch_size, image_size, device=rank)
+        # noise = image_noise(batch_size, image_size, device=rank)
+        noise = torch.FloatTensor(batch_size, image_size, image_size, 1).uniform_(0., 1.)
 
         I_dash_s_to_t = self.G(z_s_styles, noise, E_t)
         I_dash_s_to_t_ema = self.GE(z_s_styles, noise, E_t)

@@ -130,11 +130,24 @@ def splice(A_s, A_t):
     #Hand Slicing
     h2 = -70
     w2 = -232
-
-    A_t[0:h1, 0:w1, :] = A_s[0:h1, 0:w1, :]  # face
-    A_t[h2:-1, w2:-1, :] = A_s[h2:-1, w2:-1, :]  # hands
+    
+    A_t[:, :, 0:h1, 0:w1] = A_s[:, :, 0:h1, 0:w1]  # face
+    A_t[:, :, h2:-1, w2:-1] = A_s[:, :, h2:-1, w2:-1]  # hands
 
     return A_t
+
+
+def get_transforms(scale_and_crop, is_tensor=False):
+    t_set = (
+        [transforms.Lambda(scale_and_crop)], # source images
+        [transforms.Lambda(scale_and_crop)], # pose maps
+        list(),                              # texture_maps
+    )
+    if not is_tensor:
+        to_tensor = [transforms.ToTensor()]
+        t_set = tuple(to_tensor + t for t in t_set)
+            
+    return tuple(transforms.Compose(t) for t in t_set)
 
 
 class DeepFashionSplicedDataset(Dataset):
@@ -209,23 +222,24 @@ class DeepFashionSplicedDataset(Dataset):
         # self.to_rgb = convert_transparent_to_rgb if transparent else lambda x: x
         # self.expand_greyscale = expand_greyscale(transparent)
         self.scale_and_crop = scale_and_crop(self.img_size) if scale_crop else transforms.Resize(self.img_size)
-        self.transforms = (
-            transforms.Compose([  # For source images
-                transforms.ToTensor(),  # [0, 255] gets mapped to [0.0, 1.0]
-                # convert to 3 channels (squash alpha) -> don't need
-                # transforms.Lambda(self.to_rgb),
-                transforms.Lambda(self.scale_and_crop)
-            ]),
-            transforms.Compose([  # For Pose maps
-                # this will screw up pose segmentation since {0,..., 24} gets mapped to [0.0, 1.0]
-                transforms.ToTensor(),
-                # guaranteed to be 3 channels
-                transforms.Lambda(self.scale_and_crop)
-            ]),
-            transforms.Compose([  # For texture Maps
-                transforms.ToTensor()  # converts [0, 255] to float[0.0, 1.0]
-            ])
-        )
+        self.transforms = get_transforms(self.scale_and_crop)
+        # self.transforms = (
+        #     transforms.Compose([  # For source images
+        #         transforms.ToTensor(),  # [0, 255] gets mapped to [0.0, 1.0]
+        #         # convert to 3 channels (squash alpha) -> don't need
+        #         # transforms.Lambda(self.to_rgb),
+        #         transforms.Lambda(self.scale_and_crop)
+        #     ]),
+        #     transforms.Compose([  # For Pose maps
+        #         # this will screw up pose segmentation since {0,..., 24} gets mapped to [0.0, 1.0]
+        #         transforms.ToTensor(),
+        #         # guaranteed to be 3 channels
+        #         transforms.Lambda(self.scale_and_crop)
+        #     ]),
+        #     transforms.Compose([  # For texture Maps
+        #         transforms.ToTensor()  # converts [0, 255] to float[0.0, 1.0]
+        #     ])
+        # )
 
     def __len__(self):
         """

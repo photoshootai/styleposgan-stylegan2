@@ -2,7 +2,7 @@
 #Local Machine Only
 export MKL_THREADING_LAYER='GNU'
 
-model="/home/madhav/styleposgan-stylegan2/checkpoints/"
+model="/home/madhav/styleposgan-stylegan2/checkpoints/models/a100"
 src="/home/madhav/styleposgan-stylegan2/inf_test/source.jpg"
 targ="/home/madhav/styleposgan-stylegan2/inf_test/target.jpg"
 out='/home/madhav/styleposgan-stylegan2/inf_test/outputs'
@@ -15,4 +15,6 @@ python3.8 run_inference_prod.py \
     --outputs $out \
     --scripted_model_path $scripted_model \
     --densepose $densepose \
-    --image_size 256 -v
+    --image_size 256 -v \
+    --model_dir $model 
+    # --save_model
