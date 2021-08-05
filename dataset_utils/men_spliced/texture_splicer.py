@@ -21,7 +21,9 @@ from torchvision.utils import save_image
 from shutil import copy2
 from PIL import Image
 
-from datasets import conditional_shuffle
+import argparse
+
+# from datasets import conditional_shuffle
 
 NUM_CORES = multiprocessing.cpu_count()
 
@@ -128,13 +130,14 @@ def save_s_t_pair(st, img_dirs, new_img_dirs):
     save_image(get_spliced_face_and_hands_on_target(os.path.join(img_dirs[2], src), os.path.join(img_dirs[2], targ)), os.path.join(new_img_dirs[2], src))
     copy2(os.path.join(img_dirs[0], targ),  os.path.join(new_img_dirs[-1], src))
 
-def create_texture_spliced_dataset(pruned_pairs):
+def create_texture_spliced_dataset(pruned_pairs, in_data_dir, spliced_data_out_dir):
     start = time.time()
-    data_dir = "./data/DeepFashionMenOnlyCleaned"
+    data_dir = in_data_dir #"./data/DeepFashionMenOnlyCleaned"
 
     in_data_dir = partial(os.path.join, data_dir)
     sub_dirs = ['SourceImages', 'PoseMaps', 'TextureMaps']
     img_dirs = tuple(map(in_data_dir, sub_dirs))
+    # print(img_dirs)
     assert all(map(os.path.isdir, img_dirs)), 'Some requisite image directories not found'
 
     files = [d.name for d in os.scandir(img_dirs[0])]
@@ -142,9 +145,12 @@ def create_texture_spliced_dataset(pruned_pairs):
     print(len(files))
 
 
-    parent_dir = os.path.join('.', 'data', 'DeepFashionMenOnlySpliced')
+    parent_dir = spliced_data_out_dir#os.path.join('.', 'data', 'DeepFashionMenOnlySpliced')
     if not os.path.isdir(parent_dir):
-        os.mkdir(parent_dir)
+        os.makedirs(parent_dir)
+    else:
+        raise FileExistsError('Directory already exists')
+        
     new_img_dirs = tuple(map(partial(os.path.join, parent_dir), sub_dirs + ['TargetImages']))
     for d in new_img_dirs:
         if not os.path.isdir(d):
@@ -172,40 +178,50 @@ def create_texture_spliced_dataset(pruned_pairs):
 
     print(f'Took {(time.time() - start):.4f} seconds to make pairs')
 
-def main():
+def main(pkl, in_data_dir, spliced_data_out_dir):
     import pickle
 
-    pkl = "./data/pairs_clothing_id_model_DeepFashionMenOnlyCleaned.pkl" #'./temp.pkl'
     if os.path.isfile(pkl):
         print('Pickle exists')
         with open(pkl, 'rb') as f:
             pruned_pairs = pickle.load(f)
         print(f"Pairs : {len(pruned_pairs)}")
 
-        show_pruned_pairs("./data/DeepFashionMenOnlyCleaned/SourceImages", pruned_pairs)
+        # show_pruned_pairs(in_data_dir + "/SourceImages", pruned_pairs)
 
 
-        exit()
+        # exit()
     else:
         print('Pickle does not exist')
-        data_dir = "./data/DeepFashionMenOnlyCleaned"
+        raise ValueError("Cannot splice without pairings pickle file as file names don't have a pattern anymore")
 
-        in_data_dir = partial(os.path.join, data_dir)
-        sub_dirs = ['SourceImages', 'PoseMaps', 'TextureMaps']
-        img_dirs = tuple(map(in_data_dir, sub_dirs))
-        assert all(map(os.path.isdir, img_dirs)), 'Some requisite image directories not found'
 
-        files = [d.name for d in os.scandir(img_dirs[0])]
-        props = {'model'}
-        pruned_pairs = list(conditional_shuffle(files, props, 1, with_replacement=True))
-        print(f"Pairs : {len(pruned_pairs)}")
+        #Dont want to generate a new pickle file anymore because file names dont have a pattern anymore 
 
-        random.seed(SEED)
-        random.shuffle(pruned_pairs) #(A, A)
-        with open(pkl, 'wb') as f:
-            pickle.dump(pruned_pairs, f)
+        # data_dir = "./data/DeepFashionMenOnlyCleaned"
+
+        # in_data_dir = partial(os.path.join, data_dir)
+        # sub_dirs = ['SourceImages', 'PoseMaps', 'TextureMaps']
+        # img_dirs = tuple(map(in_data_dir, sub_dirs))
+        # assert all(map(os.path.isdir, img_dirs)), 'Some requisite image directories not found'
+
+        # files = [d.name for d in os.scandir(img_dirs[0])]
+        # props = {'model'}
+        # pruned_pairs = list(conditional_shuffle(files, props, 1, with_replacement=True))
+        # print(f"Pairs : {len(pruned_pairs)}")
+
+        # random.seed(SEED)
+        # random.shuffle(pruned_pairs) #(A, A)
+        # with open(pkl, 'wb') as f:
+        #     pickle.dump(pruned_pairs, f)
     
-    create_texture_spliced_dataset(pruned_pairs)
+    create_texture_spliced_dataset(pruned_pairs, in_data_dir, spliced_data_out_dir)
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--pairs_pkl', type=str, required=True, help='Path to pickle file')
+    parser.add_argument('--in_data_dir', type=str, required=True, help='Input Data directory containing SourceImages, PoseMaps and TextureMaps')
+    parser.add_argument('--out_data_dir', type=str, required=True, help='Output Spliced Data directory')
+    args = parser.parse_args()
+    main(args.pairs_pkl, args.in_data_dir, args.out_data_dir)
+

@@ -85,11 +85,11 @@ def run_training(rank, world_size, model_args, data, load_from, new, num_train_s
 def train_from_folder(
     data='./data',
     results_dir='./results',
-    models_dir='./models',
+    models_dir='./checkpoints',
     name='default',
     new=False,
     load_from=-1,
-    image_size=128,
+    image_size=256,
     network_capacity=16,
     fmap_max=512,
     transparent=False,
