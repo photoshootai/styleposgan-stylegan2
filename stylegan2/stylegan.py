@@ -1404,10 +1404,10 @@ class Trainer():
         batch_size = I_t.shape[0]
 
 
-        print("I_s size", I_s.shape)
-        print("I_spliced_texture size", I_spliced_texture.shape)
-        print("I_t_pose size", I_t_pose.shape)
-        print("I_t size", I_t.shape)
+        # print("I_s size", I_s.shape)
+        # print("I_spliced_texture size", I_spliced_texture.shape)
+        # print("I_t_pose size", I_t_pose.shape)
+        # print("I_t size", I_t.shape)
 
 
         # Get encodings
