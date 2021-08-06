@@ -616,7 +616,28 @@ class Generator(nn.Module):
         self.blocks = nn.ModuleList([])
         self.attns = nn.ModuleList([])
 
-        in_out_pairs = [(512, 256), (256, 128), (128, 64), (64, 32)]
+        if image_size == 256:
+            print("Image Size is 256")
+            if network_capacity == 16:
+                in_out_pairs = [(512, 256), (256, 128), (128, 64), (64, 32)]
+
+            elif network_capacity == 32:
+                print("Network capacity is 32 so doubling the number of filters")
+                in_out_pairs = [(512, 512), (512, 256), (256, 128), (128, 64)]
+        
+        if image_size == 512:
+            print("Image Size is 512 so adding another block")
+            if network_capacity == 16:
+                in_out_pairs = [(512, 512), (512, 256), (256, 128), (128, 64), (64, 32)]
+                
+        
+            if network_capacity == 32:
+                print("Network capacity is 32 so doubling the number of filters")
+                in_out_pairs = [(512, 512), (512, 512), (512, 256), (256, 128), (128, 64)]
+                
+
+
+        print("Layers with channels are: ", in_out_pairs)
 
         for ind, (in_chan, out_chan) in enumerate(in_out_pairs):
             not_first = ind != 0
@@ -1420,7 +1441,7 @@ class Trainer():
         noise = image_noise(batch_size, image_size, device=self.rank)
 
         import torch.nn.functional as F
-        I_spliced_texture = F.interpolate(I_spliced_texture, size=256)
+        I_spliced_texture = F.interpolate(I_spliced_texture, size=image_size)
 
         
         # Regular Genrations
