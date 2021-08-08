@@ -197,7 +197,7 @@ def train_from_folder(
     world_size = torch.cuda.device_count()
 
     #Logger setup
-    wandb_logger =  wandb.init(project="stylegan2-edit") if log else None
+    wandb_logger =  wandb.init(project="spgan_spliced_runs") if log else None
 
     if world_size == 1 or not multi_gpus:
         run_training(0, 1, model_args, data, load_from,
