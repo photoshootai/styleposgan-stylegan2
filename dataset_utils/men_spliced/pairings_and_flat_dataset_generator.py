@@ -49,12 +49,15 @@ def get_all_pairs_and_images(top_dir, pairs_limit):
         # print(image_file_names)
         # print(pairs_to_add)
         assert len(images) == len(image_file_names), "Images and file names should be of equal length"
-        if len(pairs_to_add) > pairs_limit:
-            indices = sample(range(len(pairs_to_add)), pairs_limit)
         
-            pairs_to_add = [pairs_to_add[i] for i in indices]
-            # images = [images[i] for i in indices]
-            # image_file_names = [image_file_names[i] for i in indices]
+        
+        #To limit the number of pairs
+        # if len(pairs_to_add) > pairs_limit:
+        #     indices = sample(range(len(pairs_to_add)), pairs_limit)
+        
+        #     pairs_to_add = [pairs_to_add[i] for i in indices]
+        #     # images = [images[i] for i in indices]
+        #     # image_file_names = [image_file_names[i] for i in indices]
 
         all_individual_images.extend(images)
         all_image_file_names.extend(image_file_names)
@@ -109,18 +112,19 @@ if __name__ == "__main__":
     parser.add_argument("--raw_dataset_dir", required=True)
     parser.add_argument("--out_dataset_path", required=True, type=str)
     parser.add_argument("--out_pkl_file", required=True, type=str)
-    parser.add_argument("--pairs_limit", type=int, default=8)
+    parser.add_argument("--pairs_limit", type=int, default=32)
   
 
     args = parser.parse_args()
 
     all_pairs, (all_images, all_image_filenames) = get_all_pairs_and_images(args.raw_dataset_dir, args.pairs_limit)
 
-
-    
+    print(f"Generated {len(all_pairs)} pairs")
     write_to_pickle(all_pairs, args.out_pkl_file)
     create_flattened_dataset(all_images, all_image_filenames, args.out_dataset_path)
 
+
+    #Testing
     # all_pairs = read_from_pickle(args.out_pkl_file)
 
     # print(sample(all_pairs, 10))
