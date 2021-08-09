@@ -645,9 +645,9 @@ class Generator(nn.Module):
             not_last = ind != (self.num_layers - 1)
             num_layer = self.num_layers - ind
 
-
-            if num_layer in attn_layers:
-                print(f"Adding attention layer to {num_layer}")
+            #The below is changed to add attention to the generator layer number
+            if ind in attn_layers:   #if num_layer in attn_layers:
+                print(f"Adding attention layer to {ind}")
                 attn_fn = attn_and_ff(in_chan)
             else:
                 attn_fn = None
