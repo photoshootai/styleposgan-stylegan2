@@ -1,6 +1,6 @@
 # Clone 
 !git clone https://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@github.com/photoshootai/styleposgan-stylegan2.git
-!git checkout ddp-fixes
+!git checkout dev-fixes
 
 #Install libs
 pip install -r requirements.txt
@@ -9,19 +9,12 @@ pip install gdown
 https://drive.google.com/uc?id=1R6DnSBPDLxboyHNRkaR6gTtyRE-ZODGn
 gdown https://drive.google.com/uc?id=1R6DnSBPDLxboyHNRkaR6gTtyRE-ZODGn
 
-#Women Only Dataset
-gdown https://drive.google.com/uc?id=1CbelD3k53Yq3uX0DRKH5Lfo5W8_6uYPh
+#Combined Dataset 2 
+gdown https://drive.google.com/uc?id=17pAoap-lV73jlAi8vPzO3e9hs9NE-vFo
 
 #Extract Data
 !mkdir './styleposgan-stylegan2/data'
-unzip -q 'CombinedDatasetTraining.zip' -d './styleposgan-stylegan2/data'
+unzip -q 'CombinedDataset2Training.zip' -d './styleposgan-stylegan2/data'
 
 #Run Training
 python train.py --name sliced-32-512 --data ./data/CombinedDatasetTraining --models_dir ./checkpoints/ --results_dir ./results/ --image-size 512 --batch-size 8 --network_capacity 32 --gradient-accumulate-every 1 --log
-
-
-gdown https://drive.google.com/uc?id=1k9ztRvC7ZC9JPx2bfvig8VYUP-G1CJL2
-https://drive.google.com/file/d/1k9ztRvC7ZC9JPx2bfvig8VYUP-G1CJL2/view?usp=sharing
-
-
-https://drive.google.com/file/d/1k9ztRvC7ZC9JPx2bfvig8VYUP-G1CJL2/view?usp=sharing
