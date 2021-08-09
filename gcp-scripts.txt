@@ -14,7 +14,14 @@ gdown https://drive.google.com/uc?id=1CbelD3k53Yq3uX0DRKH5Lfo5W8_6uYPh
 
 #Extract Data
 !mkdir './styleposgan-stylegan2/data'
-unzip -q 'DeepFashionWomenOnly.zip' -d './styleposgan-stylegan2/data'
+unzip -q 'CombinedDatasetTraining.zip' -d './styleposgan-stylegan2/data'
 
 #Run Training
-python train.py --name spgan-28-june --data ./data/DeepFashionWithFace --models_dir ./checkpoints/ --results_dir ./results/ --image-size 256 --batch-size 16 --gradient-accumulate-every 1 --log
+python train.py --name sliced-32-512 --data ./data/CombinedDatasetTraining --models_dir ./checkpoints/ --results_dir ./results/ --image-size 512 --batch-size 8 --network_capacity 32 --gradient-accumulate-every 1 --log
+
+
+gdown https://drive.google.com/uc?id=1k9ztRvC7ZC9JPx2bfvig8VYUP-G1CJL2
+https://drive.google.com/file/d/1k9ztRvC7ZC9JPx2bfvig8VYUP-G1CJL2/view?usp=sharing
+
+
+https://drive.google.com/file/d/1k9ztRvC7ZC9JPx2bfvig8VYUP-G1CJL2/view?usp=sharing
