@@ -1452,6 +1452,7 @@ class Trainer():
        
         save_path = str(self.results_dir / self.name / f'{str(num)}.{ext}')
         torchvision.utils.save_image(generated_stack, save_path, nrow=size)
+        print("Saved image to: ", save_path)
 
         images = wandb.Image(save_path, caption="Generations Regular I_double_dash")
         self.track(images, "generations_regular")
@@ -1464,6 +1465,7 @@ class Trainer():
 
         save_path = str(self.results_dir / self.name / f'{str(num)}-ema.{ext}')
         torchvision.utils.save_image(generated_stack, save_path, nrow=size)
+        print("Saved image to: ", save_path)
 
         images = wandb.Image(save_path, caption="Generations EMA I_double_dash")
         self.track(images, "generations_ema")
