@@ -593,7 +593,7 @@ class Generator(nn.Module):
         self.image_size = image_size
         self.latent_dim = latent_dim
         
-        self.num_layers = 4#int(log2(image_size) - 1)
+        #int(log2(image_size) - 1)
 
         # filters = [network_capacity * (2 ** (i + 1)) for i in range(self.num_layers)][::-1]
 
@@ -635,16 +635,22 @@ class Generator(nn.Module):
                 print("Network capacity is 32 so doubling the number of filters")
                 in_out_pairs = [(512, 512), (512, 512), (512, 256), (256, 128), (128, 64)]
                 
-
+        self.num_layers = len(in_out_pairs)
 
         print("Layers with channels are: ", in_out_pairs)
+        print("Total number of layers are: ", self.num_layers)
 
         for ind, (in_chan, out_chan) in enumerate(in_out_pairs):
             not_first = ind != 0
-            not_last = ind != 3#(self.num_layers - 1)
+            not_last = ind != (self.num_layers - 1)
             num_layer = self.num_layers - ind
 
-            attn_fn = attn_and_ff(in_chan) #if num_layer in attn_layers else None
+
+            if num_layer in attn_layers:
+                print(f"Adding attention layer to ")
+                attn_fn = attn_and_ff(in_chan)
+            else:
+                attn_fn = None
 
             self.attns.append(attn_fn)
 
@@ -652,13 +658,13 @@ class Generator(nn.Module):
                 latent_dim,
                 in_chan,
                 out_chan,
-                upsample = True,
+                upsample = not_first,
                 upsample_rgb = not_last,
                 rgba = transparent
             )
             self.blocks.append(block)
 
-        print("Generator Initialized with: ", {"image_size": self.image_size, "latent_dim": self.latent_dim, "num_blocks": len(self.blocks),
+        print("Generator Initialized with: ", {"image_size": self.image_size,  "latent_dim": self.latent_dim, "num_blocks": len(self.blocks),
                                         "attn_layers": len(self.attns)
                                         })
 
