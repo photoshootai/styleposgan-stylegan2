@@ -721,8 +721,8 @@ class Discriminator(nn.Module):
                 in_chan, out_chan, downsample=is_not_last)
             blocks.append(block)
 
-            attn_fn = attn_and_ff(
-                out_chan) if num_layer in attn_layers else None
+            #Disabling attention layers for D
+            attn_fn = None #attn_and_ff(out_chan) if num_layer in attn_layers else None
 
             attn_blocks.append(attn_fn)
 
