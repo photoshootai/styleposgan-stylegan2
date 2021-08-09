@@ -178,6 +178,9 @@ def train_from_folder(
     model = Trainer(**model_args)
     model.load(load_from)
     samples_name = timestamped_filename()
+
+
+    
     model.set_data_src(data, False, None)
     
 
