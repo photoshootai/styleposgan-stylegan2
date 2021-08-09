@@ -647,7 +647,7 @@ class Generator(nn.Module):
 
 
             if num_layer in attn_layers:
-                print(f"Adding attention layer to ")
+                print(f"Adding attention layer to {num_layer}")
                 attn_fn = attn_and_ff(in_chan)
             else:
                 attn_fn = None
