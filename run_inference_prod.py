@@ -362,8 +362,8 @@ def main(src: str, targ: str,
         A_t = DF.splice_batched(A_s, A_t)
         sample_input = (A_t, P_t)
 
-        # print(A_s.size())
-        # print(P_t.size())
+        print(A_s.size())
+        print(P_t.size())
         scripted_model = torch.jit.trace(model.GAN.cpu(), sample_input)
         scripted_model.save(model_path)
         verb and print(f'model traced and saved to {model_path}! Exiting...')
@@ -399,34 +399,34 @@ def main(src: str, targ: str,
 
 
         spliced_texture = DF.splice_batched(A_s, A_t)
-        # im = torchvision.transforms.ToPILImage()(spliced_texture.squeeze())
-        # im.show()
+        im = torchvision.transforms.ToPILImage()(spliced_texture.squeeze())
+        im.show()
 
-        # input("Showing As, At and spliced...")
+        input("Showing As, At and spliced...")
 
 
-        (image_size, I_dash_s_to_t, I_dash_s_to_t_ema) = model(spliced_texture, P_t)
-        image_size = image_size.item()
+        # (image_size, I_dash_s_to_t, I_dash_s_to_t_ema) = model(spliced_texture, P_t)
+        # image_size = image_size.item()
 
-        # A_s = F.interpolate(A_s, size=image_size)
-        spliced_texture = F.interpolate(spliced_texture, size=image_size)
+        # # A_s = F.interpolate(A_s, size=image_size)
+        # spliced_texture = F.interpolate(spliced_texture, size=image_size)
 
-        regular = torch.cat(
-            (I_s, P_s, spliced_texture, I_t, P_t, I_dash_s_to_t), dim=0
-        )
+        # regular = torch.cat(
+        #     (I_s, P_s, spliced_texture, I_t, P_t, I_dash_s_to_t), dim=0
+        # )
 
-        ema = torch.cat(
-            (I_s, P_s, spliced_texture, I_t, P_t, I_dash_s_to_t_ema), dim=0
-        )
+        # ema = torch.cat(
+        #     (I_s, P_s, spliced_texture, I_t, P_t, I_dash_s_to_t_ema), dim=0
+        # )
 
-        # final_img = torch.cat((regular, ema), dim=0)  # to concat reg + ema together
-        reg_save_path = os.path.join(results_dir, f'{img}_inference.jpg')
-        ema_save_path = os.path.join(results_dir, f'{img}_inference_EMA.jpg')
+        # # final_img = torch.cat((regular, ema), dim=0)  # to concat reg + ema together
+        # reg_save_path = os.path.join(results_dir, f'{img}_inference.jpg')
+        # ema_save_path = os.path.join(results_dir, f'{img}_inference_EMA.jpg')
 
-        torchvision.utils.save_image(regular, reg_save_path, nrow=batch_size)
-        torchvision.utils.save_image(ema, ema_save_path, nrow=batch_size)
-        verb and print(f'saved files - reg: {reg_save_path} and ema: {ema_save_path}')
-        img, pair = next(data_iter, empty)
+        # torchvision.utils.save_image(regular, reg_save_path, nrow=batch_size)
+        # torchvision.utils.save_image(ema, ema_save_path, nrow=batch_size)
+        # verb and print(f'saved files - reg: {reg_save_path} and ema: {ema_save_path}')
+        # img, pair = next(data_iter, empty)
 
     
     # go back to previous directory
