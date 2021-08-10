@@ -93,33 +93,6 @@ class scale_and_crop(object):
         return cropped
 
 
-cat_map = {'sex': 0, 'clothing_category': 1, 'const_1': 2, 'model': 3, 'clothing_id': 4, 'idx': 5, 'pose': 6}
-
-def extract_prop(file_name: str, props: Set[str]={'model'}) -> Tuple[str]:
-    """
-    /PATH/{sex}_{clothing_category}_id_{model}_{clothing_id}_{idx}_{pose}.jpg
-    """
-    idxs = {v for k, v in cat_map.items() if k in props}
-    mask = (1 if i in idxs else 0 for i in range(len(cat_map)))
-    base_name = os.path.splitext(file_name)[0]
-    match = re.match(r'([A-Z]+)\_(.+)\_(id)\_(\d+)\_(\d+)\_(\d+)\_(.+)', base_name)
-    return tuple(compress(match.groups(), mask))
-
-def filter_opt(opt, files, props):
-    # list for multiprocessing compatibility generator preferred for single threaded
-    return list(filter(lambda f: opt == extract_prop(f, props), files))
-
-def conditional_shuffle(files: Iterable[str], props: Set[str], n_threads: int=6, with_replacement=False) -> Iterable[Tuple[str]]:
-    perm_func = partial(permutations, r=2) if not with_replacement else partial(product, repeat=2)
-    extract = partial(extract_prop, props=props)
-    opts = set(extract(f) for f in files)
-    with Pool(n_threads) as P:
-        groups = P.starmap(filter_opt, zip(opts, repeat(files), repeat(props)))
-        pairs = P.map(perm_func, groups)
-    
-    pruned_pairs = (pair for pair in chain.from_iterable(pairs) if pair)
-    return pruned_pairs
-
 
 def splice_unbatched(A_s, A_t):
     assert len(A_s.shape) == 3 and len(A_t.shape) == 3, "Inputs must not be batched" 
@@ -209,8 +182,8 @@ class TestDataset(Dataset):
         self.target_img_dirs = tuple(map(target_data_dir, self.target_sub_dirs))
         
 
-        print(self.user_img_dirs)
-        print(self.target_img_dirs)
+        # print(self.user_img_dirs)
+        # print(self.target_img_dirs)
 
         assert all(map(os.path.isdir, self.user_img_dirs)), 'Some requisite UserImage directories not found'
         assert all(map(os.path.isdir, self.target_img_dirs)), 'Some requisite TargetImage directories not found'
@@ -222,13 +195,13 @@ class TestDataset(Dataset):
         target_texture_maps = [f.name for f in os.scandir(self.target_img_dirs[1]) if f.is_file()]
 
 
-        print("Length of user_file_names: ", len(user_file_names))
-        print("Length of target_pose_maps: ", len(target_pose_maps))
-        print("Length of target_texture_maps: ", len(target_texture_maps))
+        # print("Length of user_file_names: ", len(user_file_names))
+        # print("Length of target_pose_maps: ", len(target_pose_maps))
+        # print("Length of target_texture_maps: ", len(target_texture_maps))
 
         self.data = list(product(user_file_names, target_pose_maps, target_texture_maps))
 
-        print(len(self.data))
+        # print(len(self.data))
 
         #Transforms
         self.scale_and_crop = scale_and_crop(self.img_size) if scale_crop else transforms.Resize(self.img_size)
@@ -268,12 +241,12 @@ class TestDataset(Dataset):
         # print(list(tgt_im_paths))
 
         src_im_paths = list(src_im_paths)
-        print(src_im_paths)
+        # print(src_im_paths)
         src_imgs = map(Image.open, src_im_paths)
         targ_imgs = map(Image.open, tgt_im_paths)
 
         source_set = (f(x) for f, x in zip(self.transforms, src_imgs))
-        target_set = (f(x) for f, x in zip(self.transforms[1:], targ_imgs))
+        target_set = (f(x) for f, x in zip(self.transforms, targ_imgs))
 
         # print([x.shape for x in source_set])
         # print([x.shape for x in target_set])

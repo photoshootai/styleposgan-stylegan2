@@ -1,11 +1,11 @@
 #!/bin/bash
 export MKL_THREADING_LAYER='GNU'
 
-model="/home/madhav/styleposgan-stylegan2/checkpoints/a100"
+model="/home/madhav/styleposgan-stylegan2/checkpoints/256-5e5"
 src="/home/madhav/styleposgan-stylegan2/inf_test/source.jpg"
 targ="/home/madhav/styleposgan-stylegan2/inf_test/target.jpg"
 out='/home/madhav/styleposgan-stylegan2/inf_test/outputs'
-scripted_model="/home/madhav/styleposgan-stylegan2/inf_test/scripted_model.pt"
+scripted_model="/home/madhav/styleposgan-stylegan2/inf_test/scripted_model_2.pt"
 densepose="/home/madhav/styleposgan-stylegan2/densepose"
 
 

@@ -1514,13 +1514,10 @@ class Trainer():
 
             batch_size = I_s.shape[0]
 
-
-            print("I_s size", I_s.shape)
-            print("I_spliced_texture size", spliced_texture.shape)
-            print("A_t size", A_t.shape)
-            print("P_t size", P_t.shape)
-
-
+            # print("I_s size", I_s.shape)
+            # print("I_spliced_texture size", spliced_texture.shape)
+            # print("A_t size", A_t.shape)
+            # print("P_t size", P_t.shape)
 
             # Get encodings
             E_t = self.GAN.p_net(P_t)
@@ -1535,6 +1532,7 @@ class Trainer():
             spliced_texture = F.interpolate(spliced_texture, size=image_size)
             A_t = F.interpolate(A_t, size=image_size)
             I_s = F.interpolate(I_s, size=image_size)
+            P_t = F.interpolate(P_t, size=image_size)
 
             
             # Regular Genrations
