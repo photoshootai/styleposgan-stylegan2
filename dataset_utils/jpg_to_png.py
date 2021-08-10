@@ -1,8 +1,8 @@
 import os
 import pickle
 
-jpg_pkl_path = "./data/CombinedDatasetTraining.pkl"
-png_pkl_path = "./data/CombinedDatasetTrainingPng.pkl"
+jpg_pkl_path = "./data/CombinedDataset2Training.pkl"
+png_pkl_path = "./data/CombinedDataset2TrainingPng.pkl"
 
 with open(jpg_pkl_path, 'rb') as f:
     jpg_pairs = pickle.load(f)

@@ -220,7 +220,7 @@ class DeepFashionSplicedDataset(Dataset):
 
         # pair_pickle = f'./data/pairs_{"_".join(sorted(list(props)))}_{os.path.basename(data_dir)}.pkl'
 
-        pair_pickle = os.path.join('.', 'data', 'CombinedDatasetTraining.pkl')
+        pair_pickle = os.path.join('.', 'data', 'CombinedDataset2Training.pkl')
 
         if os.path.isfile(pair_pickle):
             print("Loading pair annotations from pickle: ", pair_pickle)
