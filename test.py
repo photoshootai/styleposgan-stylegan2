@@ -181,11 +181,10 @@ def train_from_folder(
 
 
     
-    model.set_data_src(data, False, None)
+    model.set_val_data_src(data)
     
+    model.run_validation()
 
-    model.evaluate()
-    # print(f'sample images generated at {results_dir}/{name}/{samples_name}')
     return
 
     # if generate_interpolation:

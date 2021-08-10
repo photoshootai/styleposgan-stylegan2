@@ -40,7 +40,7 @@ from .version import __version__
 from PIL import Image
 from pathlib import Path
 
-from datasets import DeepFashionDataset, DeepFashionSplicedDataset
+from datasets import DeepFashionDataset, DeepFashionSplicedDataset, TestDataset
 from models import ANet, PNet
 
 from losses import VGG16Perceptual, FaceIDLoss
@@ -1124,8 +1124,20 @@ class Trainer():
     def config(self):
         return {'image_size': self.image_size, 'network_capacity': self.network_capacity, 'lr_mlp': self.lr_mlp, 'transparent': self.transparent, 'fq_layers': self.fq_layers, 'fq_dict_size': self.fq_dict_size, 'attn_layers': self.attn_layers, 'no_const': self.no_const}
 
-    def set_data_src(self, folder, overfit, subset):
 
+    def set_val_data_src(self, dir):
+        self.val_dataset = TestDataset(dir, self.image_size, transparent=self.transparent, aug_prob=self.dataset_aug_prob)
+        num_workers = num_workers = default(
+            self.num_workers, NUM_CORES if not self.is_ddp else 0)
+        sampler = DistributedSampler(
+            self.val_dataset, rank=self.rank, num_replicas=self.world_size, shuffle=True) if self.is_ddp else None
+        val_loader = data.DataLoader(self.val_dataset, num_workers=num_workers, batch_size=math.ceil(
+            self.batch_size / self.world_size), sampler=sampler, shuffle=not self.is_ddp, drop_last=True, pin_memory=True)
+
+        self.val_loader = iter(val_loader)
+
+    def set_data_src(self, folder, overfit, subset):
+        
         # self.dataset = DeepFashionDataset(
         #     folder, self.image_size, transparent=self.transparent, aug_prob=self.dataset_aug_prob)
 
@@ -1470,6 +1482,89 @@ class Trainer():
         images = wandb.Image(save_path, caption="Generations EMA I_double_dash")
         self.track(images, "generations_ema")
 
+    @torch.no_grad()
+    def run_validation(self, num=0, trunc=1.0):
+
+        """
+        To be only used with test.py
+        """
+
+        self.GAN.eval()
+        ext = self.image_extension
+        num_rows = self.num_image_tiles
+
+        latent_dim = self.GAN.G.latent_dim
+        image_size = self.GAN.G.image_size
+        num_layers = self.GAN.G.num_layers
+
+        count=1
+        while True:
+            batch = next(self.val_loader, None)
+            
+            if batch is None:
+                print("done iterating")
+                break
+
+            (I_s, spliced_texture, A_t, P_t) = batch
+
+            I_s = I_s.cuda(self.rank)
+            spliced_texture = spliced_texture.cuda(self.rank)
+            A_t = A_t.cuda(self.rank)
+            P_t = P_t.cuda(self.rank)
+
+            batch_size = I_s.shape[0]
+
+
+            print("I_s size", I_s.shape)
+            print("I_spliced_texture size", spliced_texture.shape)
+            print("A_t size", A_t.shape)
+            print("P_t size", P_t.shape)
+
+
+
+            # Get encodings
+            E_t = self.GAN.p_net(P_t)
+            z_spliced = self.GAN.a_net(spliced_texture)
+
+            z_s_def = [(z_spliced, num_layers)]
+            z_spliced_styles = styles_def_to_tensor(z_s_def)
+
+            noise = image_noise(batch_size, image_size, device=self.rank)
+
+            import torch.nn.functional as F
+            spliced_texture = F.interpolate(spliced_texture, size=image_size)
+            A_t = F.interpolate(A_t, size=image_size)
+            I_s = F.interpolate(I_s, size=image_size)
+
+            
+            # Regular Genrations
+            size = min(batch_size, batch_size)
+
+            generated_images = self.GAN.G(z_spliced_styles, noise, E_t)
+            generated_stack = torch.cat((I_s[:size], spliced_texture[:size], A_t[:size], P_t[:size], generated_images[:size]), dim=0)
+        
+            save_path = str(self.results_dir / self.name / f'{count}.{ext}')
+            torchvision.utils.save_image(generated_stack, save_path, nrow=size)
+            # print("Saved image to: ", save_path)
+
+            images = wandb.Image(save_path, caption="Generations Regular I_double_dash")
+            self.track(images, "generations_regular")
+
+
+
+            # EMA Generations
+            generated_images_ema = self.GAN.GE(z_spliced_styles, noise, E_t)
+            generated_stack = torch.cat((I_s[:size], spliced_texture[:size], A_t[:size], P_t[:size], generated_images_ema[:size]), dim=0)
+
+            save_path = str(self.results_dir / self.name / f'{count}-ema.{ext}')
+            torchvision.utils.save_image(generated_stack, save_path, nrow=size)
+            # print("Saved image to: ", save_path)
+
+            images = wandb.Image(save_path, caption="Generations EMA I_double_dash")
+            self.track(images, "generations_ema")
+            count+=1
+
+        print("Done. Saved images to ", str(self.results_dir / self.name ))
 
     @torch.no_grad()
     def calculate_fid(self, num_batches):

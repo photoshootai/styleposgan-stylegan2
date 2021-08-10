@@ -197,11 +197,40 @@ class TestDataset(Dataset):
         self.n_chan = 4 if transparent else 3
         self.img_size = image_size if isinstance(image_size, Tuple) else (int(image_size), int(image_size))
 
-        in_data_dir = partial(os.path.join, data_dir)
+        user_data_dir = partial(os.path.join, data_dir, 'UserImages')
         self.sub_dirs = ('SourceImages', 'PoseMaps', 'TextureMaps')
-        self.img_dirs = tuple(map(in_data_dir, self.sub_dirs))
-        assert all(map(os.path.isdir, self.img_dirs)), 'Some requisite image directories not found'
+        
+        self.user_img_dirs = tuple(map(user_data_dir, self.sub_dirs))
+        
 
+        target_data_dir = partial(os.path.join, data_dir, 'TargetImages')
+        self.target_sub_dirs = ('PoseMaps', 'TextureMaps')
+
+        self.target_img_dirs = tuple(map(target_data_dir, self.target_sub_dirs))
+        
+
+        print(self.user_img_dirs)
+        print(self.target_img_dirs)
+
+        assert all(map(os.path.isdir, self.user_img_dirs)), 'Some requisite UserImage directories not found'
+        assert all(map(os.path.isdir, self.target_img_dirs)), 'Some requisite TargetImage directories not found'
+
+
+        user_file_names = [f.name for f in os.scandir(self.user_img_dirs[0]) if f.is_file()]
+        
+        target_pose_maps = [f.name for f in os.scandir(self.target_img_dirs[0]) if f.is_file()]
+        target_texture_maps = [f.name for f in os.scandir(self.target_img_dirs[1]) if f.is_file()]
+
+
+        print("Length of user_file_names: ", len(user_file_names))
+        print("Length of target_pose_maps: ", len(target_pose_maps))
+        print("Length of target_texture_maps: ", len(target_texture_maps))
+
+        self.data = list(product(user_file_names, target_pose_maps, target_texture_maps))
+
+        print(len(self.data))
+
+        #Transforms
         self.scale_and_crop = scale_and_crop(self.img_size) if scale_crop else transforms.Resize(self.img_size)
         self.transforms = get_transforms(self.scale_and_crop)
 
@@ -211,7 +240,7 @@ class TestDataset(Dataset):
         """
         length of entire dataset 
         """
-        return self.data_len
+        return len(self.data)
 
     def __getitem__(self, index: int) -> Tuple[Tuple[torch.Tensor]]:
         """
@@ -223,20 +252,35 @@ class TestDataset(Dataset):
         """
         # print(tuple(self.data[0]))
         # print(self.data[index])
-        src_file, targ_file = self.data[index]
-        # print(type(src_file))
-        src_im_paths = starmap(os.path.join, zip(self.img_dirs, repeat(src_file)))  # (src, pose, txt)
-        targ_im_paths = starmap(os.path.join, zip(self.img_dirs, repeat(targ_file)))  # (src, pose)
+        user_image_file, targ_pose, targ_texture = self.data[index]
 
+        # print("Filenames are: ")
+        # print(user_image_file)
+        # print(targ_pose)
+        # print(targ_texture)
+
+        # print(type(src_file))
+        src_im_paths = starmap(os.path.join, zip(self.user_img_dirs, repeat(user_image_file)))  # (src, pose, txt)
+        tgt_im_paths = starmap(os.path.join, zip(self.target_img_dirs, [targ_pose, targ_texture]))  # (src, pose, txt)
+
+
+        # print(list(src_im_paths))
+        # print(list(tgt_im_paths))
+
+        src_im_paths = list(src_im_paths)
+        print(src_im_paths)
         src_imgs = map(Image.open, src_im_paths)
-        targ_imgs = map(Image.open, targ_im_paths)
+        targ_imgs = map(Image.open, tgt_im_paths)
 
         source_set = (f(x) for f, x in zip(self.transforms, src_imgs))
-        target_set = (f(x) for f, x in zip(self.transforms, targ_imgs))
+        target_set = (f(x) for f, x in zip(self.transforms[1:], targ_imgs))
 
-        (I_s, _, A_s), (I_t, P_t, A_t) = source_set, target_set
+        # print([x.shape for x in source_set])
+        # print([x.shape for x in target_set])
+
+        (I_s, _, A_s), (P_t, A_t) = source_set, target_set
         spliced_texture = splice_unbatched(A_s, A_t)
-
-        return (I_s, spliced_texture, P_t, I_t)
+    
+        return (I_s, spliced_texture, A_t, P_t)
 
 
