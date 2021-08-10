@@ -74,7 +74,7 @@ class FaceIDLoss(nn.Module):
         
 
         # torchvision.utils.save_image(real, "./results/debug_real_before_mtcnn.png", nrow=real.shape[0])
-        # torchvision.utils.save_image(generated, "./results/debug_generated_before_mtcnn.png", nrow=real.shape[0])
+        # # torchvision.utils.save_image(generated, "./results/debug_generated_before_mtcnn.png", nrow=real.shape[0])
 
         toPIL = transforms.ToPILImage()
         real = [toPIL(t) for t in real]
@@ -89,8 +89,7 @@ class FaceIDLoss(nn.Module):
         # torchvision.utils.save_image(real_crops, "./results/debug_real_mtcnn_crops.png", nrow=real_crops.shape[0])
         # torchvision.utils.save_image(gen_crops, "./results/debug_generated_mtcnn_crops.png", nrow=real_crops.shape[0])
 
-        # torchvision.utils.save_image(real_probs, "./results/debug_real_mtcnn_probs.png", nrow=real_probs.shape[0])
-        # torchvision.utils.save_image(gen_probs, "./results/debug_generated_mtcnn_probs.png", nrow=real_probs.shape[0])
+
 
         # print(real_crops.shape)
         # print(gen_crops.shape)
@@ -110,8 +109,8 @@ class FaceIDLoss(nn.Module):
         # Debugging
         # """
 
-        # torchvision.utils.save_image(real_crops, "./results/debug_real_cropped.png", nrow=len(real))
-        # torchvision.utils.save_image(gen_crops, "./results/debug_generated_cropped.png", nrow=len(real))
+        # torchvision.utils.save_image(torch.cat(real_crops), "./results/debug_real_cropped.png", nrow=len(real_crops))
+        # # torchvision.utils.save_image(torch.stack(gen_crops), "./results/debug_generated_cropped.png", nrow=len(real))
 
         # input("Saved reals and generated to debug files...")
 
