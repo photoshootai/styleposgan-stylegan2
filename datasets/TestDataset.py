@@ -222,13 +222,13 @@ class TestDataset(Dataset):
         target_texture_maps = [f.name for f in os.scandir(self.target_img_dirs[1]) if f.is_file()]
 
 
-        print("Length of user_file_names: ", len(user_file_names))
-        print("Length of target_pose_maps: ", len(target_pose_maps))
-        print("Length of target_texture_maps: ", len(target_texture_maps))
+        # print("Length of user_file_names: ", len(user_file_names))
+        # print("Length of target_pose_maps: ", len(target_pose_maps))
+        # print("Length of target_texture_maps: ", len(target_texture_maps))
 
         self.data = list(product(user_file_names, target_pose_maps, target_texture_maps))
 
-        print(len(self.data))
+        # print(len(self.data))
 
         #Transforms
         self.scale_and_crop = scale_and_crop(self.img_size) if scale_crop else transforms.Resize(self.img_size)
@@ -268,7 +268,7 @@ class TestDataset(Dataset):
         # print(list(tgt_im_paths))
 
         src_im_paths = list(src_im_paths)
-        print(src_im_paths)
+        # print(src_im_paths)
         src_imgs = map(Image.open, src_im_paths)
         targ_imgs = map(Image.open, tgt_im_paths)
 

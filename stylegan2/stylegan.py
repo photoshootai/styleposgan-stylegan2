@@ -1657,6 +1657,78 @@ class Trainer():
         return generated_images.clamp_(0., 1.)
 
     @torch.no_grad()
+    def validation_interpolation(self, num_steps=25):
+
+        """
+        To be only used with test.py
+        """
+
+        self.GAN.eval()
+        ext = self.image_extension
+        num_rows = self.num_image_tiles
+
+        latent_dim = self.GAN.G.latent_dim
+        image_size = self.GAN.G.image_size
+        num_layers = self.GAN.G.num_layers
+
+        batch = next(self.val_loader, None)
+        (_, spliced_texture, A_t, _) = batch
+        spliced_texture = spliced_texture.cuda(self.rank)
+        latents_low = self.GAN.a_net(spliced_texture)
+
+        count=1
+        while True:
+            batch = next(self.val_loader, None)
+            
+            if batch is None:
+                print("done iterating")
+                break
+
+            (I_s, spliced_texture, A_t, P_t) = batch
+
+            spliced_texture = spliced_texture.cuda(self.rank)
+            P_t = P_t.cuda(self.rank)
+            
+
+            batch_size = I_s.shape[0]
+
+            # Get encodings
+            E_t = self.GAN.p_net(P_t)
+            latents_high = self.GAN.a_net(spliced_texture)
+
+            noise = image_noise(batch_size, image_size, device=self.rank)
+
+            ratios = torch.linspace(0., 8., num_steps)
+
+            frames = []
+            for ratio in tqdm(ratios):
+                interp_latents = slerp(ratio, latents_low, latents_high)
+                latents = [(interp_latents, num_layers)]
+                latents_t = styles_def_to_tensor(latents)
+
+                # generated_images = self.generate_truncated(self.GAN.GE, latents, noise, E_t)
+                generated_images = self.GAN.GE(latents_t, noise, E_t)
+                
+                images_grid = torchvision.utils.make_grid(
+                    generated_images, nrow=batch_size)
+                pil_image = transforms.ToPILImage()(images_grid.cpu())
+
+                if self.transparent:
+                    background = Image.new("RGBA", pil_image.size, (255, 255, 255))
+                    pil_image = Image.alpha_composite(background, pil_image)
+
+                frames.append(pil_image)
+
+            frames[0].save(str(self.results_dir / self.name / 
+                            f'{str(count)}.gif'), save_all=True, append_images=frames[1:], duration=80, loop=0, optimize=True)
+
+       
+            latents_low = latents_high
+            count+=1
+
+        print("Done. Saved images to ", str(self.results_dir / self.name ))
+
+    @torch.no_grad()
     def generate_interpolation(self, num=0, num_image_tiles=8, trunc=1.0, num_steps=100, save_frames=False):
         self.GAN.eval()
         ext = self.image_extension
