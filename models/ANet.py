@@ -1,6 +1,6 @@
 import torch.nn as nn
 from .layers import ResidualBlock
-from .pixel2style2pixel import pSp
+from pixel2style2pixel import pSp
 from argparse import Namespace
 
 try:
@@ -33,7 +33,7 @@ class ANet(nn.Module):
             'output_size': 1024,
             'batch_size': 8,
             'board_interval': 50,
-            'checkpoint_path': './models/pixel2style2pixel/pretrained_models/psp_ffhq_frontalization.pt',
+            'checkpoint_path': './pixel2style2pixel/pretrained_models/psp_ffhq_frontalization.pt',
             'dataset_type': 'ffhq_frontalize',
             'device': 'cuda:0',
             'encoder_type': 'GradualStyleEncoder',
