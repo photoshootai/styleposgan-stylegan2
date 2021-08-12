@@ -15,8 +15,8 @@ class FaceIDLoss(nn.Module):
         else:
             self.device = f'cuda:{rank}'
 
-        self.mtcnn_crop_size = mtcnn_crop_size
-        self.mtcnn = MTCNN(image_size=mtcnn_crop_size, min_face_size=10, margin=20, select_largest=True, device=self.device).eval()
+        self.mtcnn_crop_size = mtcnn_crop_size 
+        self.mtcnn = MTCNN(image_size=mtcnn_crop_size, min_face_size=10, margin=30, select_largest=True, device=self.device).eval()
         self.resnet = InceptionResnetV1(pretrained='vggface2', device=self.device).eval()
 
         if not requires_grad:
@@ -57,60 +57,21 @@ class FaceIDLoss(nn.Module):
         generated, real = normalize(generated), normalize(real)
 
 
-
-        # # (b, h, w, c) gets expanded to (1, b, h, w, c) then expects shape len 4, wtf
-
-        # det = FD.build_detector('DSFDDetector', confidence_threshold=0.5, nms_iou_threshold=0.3)
-        # print(real.permute(*perm).squeeze().cpu().numpy().astype(np.uint8).shape)
-        # real_det = det.detect(real.permute(*perm).squeeze().detach().cpu().numpy().astype(np.uint8))
-        # gen_det = det.detect(generated.permute(*perm).squeeze().detach().cpu().numpy().astype(np.uint8))
-
-
-        # print(len(real_det), real_det) #nani???
-        # print(len(gen_det), gen_det)
-        # real_crops = extract_crop(real, real_det)
-        # gen_crops = extract_crop(generated, gen_det)
-
-        
-
-        # torchvision.utils.save_image(real, "./results/debug_real_before_mtcnn.png", nrow=real.shape[0])
-        # # torchvision.utils.save_image(generated, "./results/debug_generated_before_mtcnn.png", nrow=real.shape[0])
-
         toPIL = transforms.ToPILImage()
         real = [toPIL(t) for t in real]
         generated =  [toPIL(t) for t in generated]
-
 
 
         real_crops, real_probs = self.mtcnn(real, return_prob=True)
         gen_crops, gen_probs = self.mtcnn(generated, return_prob=True)
 
  
-        # torchvision.utils.save_image(real_crops, "./results/debug_real_mtcnn_crops.png", nrow=real_crops.shape[0])
-        # torchvision.utils.save_image(gen_crops, "./results/debug_generated_mtcnn_crops.png", nrow=real_crops.shape[0])
-
-
-
-        # print(real_crops.shape)
-        # print(gen_crops.shape)
-
-        # print(real_probs.shape)
-        # print(gen_probs.shape)
-
-        # print(real_crops.shape)
-        # print(gen_crops.shape)
-
-        # print(real_probs.shape)
-
-        # print("Real Crops: ", [t.size() for t in real_crops])
-        # print("Gen Crops: ", [t.size() for t in gen_crops])
-
         # """
         # Debugging
         # """
 
-        # torchvision.utils.save_image(torch.cat(real_crops), "./results/debug_real_cropped.png", nrow=len(real_crops))
-        # # torchvision.utils.save_image(torch.stack(gen_crops), "./results/debug_generated_cropped.png", nrow=len(real))
+        # torchvision.utils.save_image(real_crops, "./results/debug_real_cropped.png", nrow=len(real_crops))
+        # torchvision.utils.save_image(gen_crops, "./results/debug_generated_cropped.png", nrow=len(gen_crops))
 
         # input("Saved reals and generated to debug files...")
 

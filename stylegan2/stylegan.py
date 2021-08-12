@@ -1048,7 +1048,7 @@ class Trainer():
         self.rank = rank
         self.world_size = world_size
 
-        self.mtcnn_crop_size = 80 #Changed from 160 to 80
+        self.mtcnn_crop_size = 120 #Changed from 160 to 80
 
         h_params = {'image_size': self.image_size,
                     'network_capacity': self.network_capacity,
