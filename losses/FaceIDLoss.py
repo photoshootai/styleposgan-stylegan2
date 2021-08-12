@@ -16,7 +16,7 @@ class FaceIDLoss(nn.Module):
             self.device = f'cuda:{rank}'
 
         self.mtcnn_crop_size = mtcnn_crop_size
-        self.mtcnn = MTCNN(image_size=mtcnn_crop_size, min_face_size=10, margin=20, select_largest=True, device=self.device).eval()
+        self.mtcnn = MTCNN(image_size=mtcnn_crop_size, min_face_size=10, margin=80, select_largest=True, device=self.device).eval()
         self.resnet = InceptionResnetV1(pretrained='vggface2', device=self.device).eval()
 
         if not requires_grad:
@@ -86,7 +86,7 @@ class FaceIDLoss(nn.Module):
         gen_crops, gen_probs = self.mtcnn(generated, return_prob=True)
 
  
-        # torchvision.utils.save_image(real_crops, "./results/debug_real_mtcnn_crops.png", nrow=real_crops.shape[0])
+        # torchvision.utils.save_image(real_crops, "./results/debug_real_mtcnn_crops.png", nrow=len(real_crops))
         # torchvision.utils.save_image(gen_crops, "./results/debug_generated_mtcnn_crops.png", nrow=real_crops.shape[0])
 
 
