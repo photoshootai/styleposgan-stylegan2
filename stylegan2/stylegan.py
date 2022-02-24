@@ -1248,14 +1248,15 @@ class Trainer():
 
             # Get encodings
             E_t = p_net(I_t_pose)
-            z_spliced = a_net(I_spliced_texture)
+            latents_list = a_net(I_spliced_texture)
+            latents = torch.cat(latents_list, dim=1)
 
 
-            z_s_def = [(z_spliced, num_layers)]
-            z_spliced_styles = styles_def_to_tensor(z_s_def)
+            # z_s_def = [(z_spliced, num_layers)]
+            # z_spliced_styles = styles_def_to_tensor(z_s_def)
             
             # Generate I''
-            I_double_dash = G(z_spliced_styles, noise, E_t)
+            I_double_dash = G(latents, noise, E_t)
             fake_output_3, fake_q_loss_3 = D_aug(
                 I_double_dash.clone().detach(), detach=True, **aug_kwargs)
 
@@ -1445,10 +1446,11 @@ class Trainer():
 
         # Get encodings
         E_t = self.GAN.p_net(I_t_pose)
-        z_spliced = self.GAN.a_net(I_spliced_texture)
+        latents_list = self.GAN.a_net(I_spliced_texture)
+        latents = torch.cat(latents_list, dim=1)
 
-        z_s_def = [(z_spliced, num_layers)]
-        z_spliced_styles = styles_def_to_tensor(z_s_def)
+        # z_s_def = [(z_spliced, num_layers)]
+        # z_spliced_styles = styles_def_to_tensor(z_s_def)
 
         noise = image_noise(batch_size, image_size, device=self.rank)
 
@@ -1459,7 +1461,7 @@ class Trainer():
         # Regular Genrations
         size = min(batch_size, batch_size)
 
-        generated_images = self.GAN.G(z_spliced_styles, noise, E_t)
+        generated_images = self.GAN.G(latents, noise, E_t)
         generated_stack = torch.cat((I_s[:size], I_spliced_texture[:size], I_t_pose[:size], I_t[:size], generated_images[:size]), dim=0)
        
         save_path = str(self.results_dir / self.name / f'{str(num)}.{ext}')
@@ -1472,7 +1474,7 @@ class Trainer():
 
 
         # EMA Generations
-        generated_images_ema = self.GAN.GE(z_spliced_styles, noise, E_t)
+        generated_images_ema = self.GAN.GE(latents, noise, E_t)
         generated_stack = torch.cat((I_s[:size], I_spliced_texture[:size], I_t_pose[:size], I_t[:size], generated_images_ema[:size]), dim=0)
 
         save_path = str(self.results_dir / self.name / f'{str(num)}-ema.{ext}')
@@ -1524,10 +1526,11 @@ class Trainer():
 
             # Get encodings
             E_t = self.GAN.p_net(P_t)
-            z_spliced = self.GAN.a_net(spliced_texture)
+            latents_list = self.GAN.a_net(spliced_texture)
+            latents = torch.cat(latents_list, dim=1)
 
-            z_s_def = [(z_spliced, num_layers)]
-            z_spliced_styles = styles_def_to_tensor(z_s_def)
+            # z_s_def = [(z_spliced, num_layers)]
+            # z_spliced_styles = styles_def_to_tensor(z_s_def)
 
             noise = image_noise(batch_size, image_size, device=self.rank)
 
@@ -1540,7 +1543,7 @@ class Trainer():
             # Regular Genrations
             size = min(batch_size, batch_size)
 
-            generated_images = self.GAN.G(z_spliced_styles, noise, E_t)
+            generated_images = self.GAN.G(latents, noise, E_t)
             generated_stack = torch.cat((I_s[:size], spliced_texture[:size], A_t[:size], P_t[:size], generated_images[:size]), dim=0)
         
             save_path = str(self.results_dir / self.name / f'{count}.{ext}')
@@ -1553,7 +1556,7 @@ class Trainer():
 
 
             # EMA Generations
-            generated_images_ema = self.GAN.GE(z_spliced_styles, noise, E_t)
+            generated_images_ema = self.GAN.GE(latents, noise, E_t)
             generated_stack = torch.cat((I_s[:size], spliced_texture[:size], A_t[:size], P_t[:size], generated_images_ema[:size]), dim=0)
 
             save_path = str(self.results_dir / self.name / f'{count}-ema.{ext}')

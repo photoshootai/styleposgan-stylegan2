@@ -50,9 +50,6 @@ tb_logs/
 /fid
 /models/*/
 .ipynb_checkpoints/
-<<<<<<< HEAD
-
-inf_test/
-=======
 /inf_test
->>>>>>> dev-fixes
+
+ pixel2style2pixel/*

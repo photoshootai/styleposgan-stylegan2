@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from .layers import ResidualBlock
 from pixel2style2pixel import pSp
@@ -30,11 +31,11 @@ class ANet(nn.Module):
         super(ANet, self).__init__()
 
         self.psp = pSp(Namespace(**{
-            'output_size': 1024,
-            'batch_size': 8,
+            'output_size': 256,
+            'batch_size': 2,
             'board_interval': 50,
-            'checkpoint_path': './pixel2style2pixel/pretrained_models/psp_ffhq_frontalization.pt',
-            'dataset_type': 'ffhq_frontalize',
+            'checkpoint_path': './pixel2style2pixel/pretrained_models/psp_ffhq_encode.pt',
+            'dataset_type': 'ffhq_encode',
             'device': 'cuda:0',
             'encoder_type': 'GradualStyleEncoder',
             'exp_dir': '',
@@ -52,7 +53,7 @@ class ANet(nn.Module):
             'optim_name': 'ranger',
             'resize_factors': None,
             'save_interval': 10000,
-            'start_from_latent_avg': True,
+            'start_from_latent_avg': False,
             'stylegan_weights': '',
             'test_batch_size': 8,
             'test_workers': 8,
@@ -62,12 +63,12 @@ class ANet(nn.Module):
             'workers': 8
         }))
         
-        self.res_block1 = ResidualBlock(in_chan=im_chan,out_chan=64)
-        self.res_block2 = ResidualBlock(in_chan=64,out_chan=128)
-        self.res_block3 = ResidualBlock(in_chan=128,out_chan=256)
-        self.res_block4 = ResidualBlock(in_chan=256,out_chan=512)
-        self.last_block = get_anet_final_block() #just the Conv2d parts
-        self.linear = nn.Linear(2048,2048)
+        # self.res_block1 = ResidualBlock(in_chan=im_chan,out_chan=64)
+        # self.res_block2 = ResidualBlock(in_chan=64,out_chan=128)
+        # self.res_block3 = ResidualBlock(in_chan=128,out_chan=256)
+        # self.res_block4 = ResidualBlock(in_chan=256,out_chan=512)
+        # self.last_block = get_anet_final_block() #just the Conv2d parts
+        # self.linear = nn.Linear( 512,2048)
 
     def forward(self, x):
         '''
@@ -80,18 +81,9 @@ class ANet(nn.Module):
         '''
         #pass the input image x through the res_blocks (same architecture as PNet)
         y = self.psp(x)
-        print('y', y.shape)
-
-        x = self.res_block1(x)
-        x = self.res_block2(x)
-        x = self.res_block3(x)
-        x = self.res_block4(x)
-        x = self.last_block(x)
-
-        # 
-        x = self.linear(x)
-        # z = x.unsqueeze(dim=1) # to go from (batch_size, 2048) -> (batch_size, 1, 2048)
-    
-        return x
+        # chunks = torch.chunk(y, x.shape[0], dim=0)
+        # y = torch.Tensor(chunks)
+        print("Y Shape", y.shape)
+        return y
     
 
