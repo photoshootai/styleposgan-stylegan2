@@ -11,8 +11,9 @@ Taking good photos is hard. With the rising importance of having high-quality (H
 In 2021, Sarkar et al. proposed a DL model known as _StyleposeGAN_. The theoretical assumption of this paper was that a portrait can be thought of as two components: 1) the pose, how the person is oriented in 3D space, and 2) the texture, how their appearance reflects their identity. See here:
 
 **Portraits consist of Pose and Texture**
-![SPGAN_fig1 drawio](https://github.com/photoshootai/styleposgan-stylegan2/assets/41484082/ad150641-61eb-4303-87b7-beed62659a73)
-Screenshots from Sarkar 2021. A. Sample portrait B. "pose map" extracted by densepose (a DL model) C. Texture map extracted by a separate algorithm that models the images as a mesh and maps each body part to a specific part of the SMPL texture map.
+![SPGAN_architecture drawio](https://github.com/photoshootai/styleposgan-stylegan2/assets/41484082/4b0a555a-58d8-4b4d-96a6-5b4de514ba35)
+
+Samples from our implementation. A. Sample portrait B. "pose map" extracted by densepose (a DL model) C. Texture map extracted by a separate algorithm that models the images as a mesh and maps each body part to a specific part of the SMPL texture map.
 
 **StyleposeGAN combines Pose and Texture to Reconstruct original Image**
 ![SPGAN_architecture drawio](https://github.com/photoshootai/styleposgan-stylegan2/assets/41484082/a4ca8721-e4fb-47c4-b837-ff861e10878a)
